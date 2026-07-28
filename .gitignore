@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment variables
+.env
+
+# PDF files
+*.pdf
+
+# Cursor files
+.cursor/
+
+# vscode files
+.vscode/
+
+# test code file
+src/mongo_vector_db/test_code.py

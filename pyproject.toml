@@ -1,0 +1,54 @@
+[project]
+name = "mongo-vector-backend"
+version = "0.1.0"
+description = "Backend interfaces to manage and query embeddings in MongoDB Atlas Vector Search."
+readme = "README.md"
+authors = [
+    { name = "rishabh1024", email = "rishabhagg2008@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]<=0.139",
+    "pymongo[srv]==4.17",
+    "pydantic>=2.7",
+    "python-dotenv>=1.2.2",
+    "langchain_core==1.4.8",
+    "langchain_mongodb==0.11.0",
+    "langchain_community==0.4.1",
+    "pypdf==6.14.1",
+    "langchain_openai==1.3.0",
+    "langchain_openrouter==0.2.6",
+    "openai==2.44.0",
+    "supabase==2.31.0",
+    "pymupdf>=1.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+    "pyright>=1.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mongo_vector_db"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
