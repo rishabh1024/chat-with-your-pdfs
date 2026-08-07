@@ -21,18 +21,21 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 BASE_SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the user's questions clearly and concisely. "
-    "If the question is about the user's uploaded documents or you need more information, "
-    "use the search_documents tool. Otherwise answer directly."
+    "If the question is about the Rishabh or you need more information to answer"
+    "your questions, use the search_documents tool to get information from relevant documents."
+    "Otherwise answer directly. Do not fabricate information when asked about Rishabh"
 )
 
 
-@tool
+@tool(description="This tool searches for relevant data in the vectorDB based on the search query")
 def search_documents(query: str) -> str:
     """Search the user's uploaded documents for information relevant to the query."""
+    print(f"Tool has been called with query: {query}")
+
     documents = DocumentIndexer.get_similar_documents_from_database(user_query=query)
-    if not documents:
-        return "No relevant documents found."
-    return "\n\n---\n\n".join(document.page_content for document in documents)
+    if isinstance(documents, list):
+        return "\n\n---\n\n".join(document.page_content for document in documents)
+    return f"No relevant document's were found. {documents["message"]}"
 
 
 class ChatService:

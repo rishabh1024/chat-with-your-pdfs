@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 from pymongo import MongoClient
 from pymongo.database import Database
-from pymongo.server_api import ServerApi
 from pymongo.operations import SearchIndexModel
+from pymongo.server_api import ServerApi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -62,7 +59,7 @@ class MongoVectorDB:
     
 #     load_dotenv(PROJECT_ROOT / ".env", override=True)
     
-#     username = os.environ.get("username")
+#     username = os.environ.get("MONGODB_USER")
 #     password = os.environ.get("password")
 #     cluster_id = os.environ.get("cluster_id")
     
@@ -78,8 +75,12 @@ class MongoVectorDB:
 #     # for doc in all_data:
 #     #     print(doc)
 #     # try:
-#     #   mongodb_instance.create_search_index(collection_name="movies", index_name="movie_plot_embedding_index")
+#     #   mongodb_instance.create_search_index(
+#     #       collection_name="movies", index_name="movie_plot_embedding_index"
+#     #   )
 #     # except Exception as e:
 #     #   raise e
-#     all_search_indexes = mongodb_instance.get_all_search_indexes_from_collection(collection_name="movies")
+#     all_search_indexes = mongodb_instance.get_all_search_indexes_from_collection(
+#         collection_name="movies"
+#     )
 #     print(all_search_indexes)

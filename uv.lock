@@ -1349,7 +1349,9 @@ dependencies = [
     { name = "pymongo" },
     { name = "pymupdf" },
     { name = "pypdf" },
+    { name = "pytest" },
     { name = "python-dotenv" },
+    { name = "ruff" },
     { name = "supabase" },
 ]
 
@@ -1374,8 +1376,10 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.28.0" },
     { name = "pypdf", specifier = "==6.14.1" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "ruff", specifier = ">=0.15.20" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "supabase", specifier = "==2.31.0" },
 ]

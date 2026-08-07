@@ -21,6 +21,8 @@ dependencies = [
     "openai==2.44.0",
     "supabase==2.31.0",
     "pymupdf>=1.28.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.20",
 ]
 
 [project.optional-dependencies]

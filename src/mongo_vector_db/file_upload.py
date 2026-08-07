@@ -1,12 +1,12 @@
 import hashlib
-import httpx
 import os
 from typing import cast
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import UploadFile
 from storage3.exceptions import StorageApiError
-from storage3.types import FileOptions, UploadResponse
+from storage3.types import FileOptions
 from supabase import SupabaseException
 from supabase.client import AsyncClient, create_async_client
 
@@ -69,6 +69,8 @@ class FileUpload:
       original_filename: str,
       file_hash: str
     ) -> StorageUploadResponse:
+
+        print("Uploading file the Supabase Object Storage")
         storage_path = f"{self.bucket_name}/pdf-files/{file_hash}.pdf"
 
         bucket_storage_client = self.supabase_client.storage.from_(self.bucket_name)
@@ -94,7 +96,7 @@ class FileUpload:
                     file_hash=file_hash,
                     storage_path=storage_path,
                     original_filename=original_filename,
-                    upload_status="Failed",
+                    upload_status="Already Exists",
                     upload_error="File already exists in storage",
                 )
         except httpx.ConnectError as exc:
