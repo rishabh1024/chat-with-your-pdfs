@@ -16,7 +16,7 @@ class MongoVectorDB:
         self.client: MongoClient = MongoClient(uri, server_api=ServerApi("1"))
         self.db: Database = self.client[db_name]
         self.collection_name: str = collection_name
-    
+
     @property
     def collection(self):
         return self.db[self.collection_name]
@@ -27,18 +27,18 @@ class MongoVectorDB:
 
     def get_all_documents_from_collection(self, collection_name: str):
         return self.db[collection_name].find(limit=10)
-    
+
     def get_all_search_indexes_from_collection(self, collection_name: str) -> list[Any]:
       list_of_all_search_indexes = self.db[collection_name].list_search_indexes()
       return [index["name"] for index in list_of_all_search_indexes]
-    
+
     def create_search_index_model(self, index_name: str):
       return SearchIndexModel(
         definition={
           "fields": [
             {
               "type": "vector",
-              "path": "movie_plot_embedding",
+              "path": "mebedding",
               "numDimensions": 1536,
               "similarity": "cosine",
             }
@@ -47,23 +47,23 @@ class MongoVectorDB:
         name=index_name,
         type="vectorSearch",
       )
-    
+
     def create_search_index(self, collection_name: str, index_name: str):
         search_index_model = self.create_search_index_model(index_name)
         self.db[collection_name].create_search_index(search_index_model)
-      
+
     def query_search_index(self, collection_name: str, index_name: str, query: str):
       return self.db[collection_name].aggregate
 
 # if __name__ == "__main__":
-    
+
 #     load_dotenv(PROJECT_ROOT / ".env", override=True)
-    
+
 #     username = os.environ.get("MONGODB_USER")
 #     password = os.environ.get("password")
 #     cluster_id = os.environ.get("cluster_id")
-    
-    
+
+
 #     MONGO_URI = f'mongodb+srv://{username}:{password}@cluster0.jsbdmm9.mongodb.net/?appName={cluster_id}'
 #     db_name = os.environ.get("MONGO_DB", "sample_mflix")
 #     if not MONGO_URI:

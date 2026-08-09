@@ -14,6 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_openrouter import ChatOpenRouter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openrouter.errors.toomanyrequestsresponse_error import TooManyRequestsResponseError
+from openrouter.errors.unauthorizedresponse_error import UnauthorizedResponseError
 from pydantic import SecretStr, ValidationError
 from pymongo.errors import ServerSelectionTimeoutError
 from tenacity import (
@@ -170,8 +171,8 @@ class DocumentIndexer:
             raise ValueError("No cleaned documents to chunk. Call clean_document_data() first.")
 
         document_to_chunk_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=300,
-            chunk_overlap=75,
+            chunk_size=800,
+            chunk_overlap=150,
         )
 
         self.chunked_document = []
@@ -185,17 +186,22 @@ class DocumentIndexer:
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     @retry(
-    retry=retry_if_exception_type(ValueError),
-    stop=stop_after_attempt(3),
-    wait=wait_fixed(2)+wait_random(0, 3),
-    before_sleep=before_sleep_log(logger, logging.WARNING),
-    reraise=True,
+        retry=retry_if_exception_type(ValueError)
+        | retry_if_exception_type(UnauthorizedResponseError),
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(2) + wait_random(0, 3),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
     )
     async def _generate_metadata(self, text: str) -> dict:
-        metadata = await self.structured_llm_instance.ainvoke(text)
-        if not isinstance(metadata, dict):
-            raise ValueError("Metadata generated is not in the expected format.")
-        return metadata
+        try:
+            metadata = await self.structured_llm_instance.ainvoke(text)
+            if not isinstance(metadata, dict):
+                raise ValueError("Metadata generated is not in the expected format.")
+            return metadata
+        except UnauthorizedResponseError as openrouter_error:
+            raise Exception("Please check your API Keys. The user"
+                            f"was not found: {openrouter_error}") from openrouter_error
 
 
     async def add_metadata_to_document(self):
@@ -235,9 +241,9 @@ class DocumentIndexer:
         MONGODB_URI = DocumentIndexer.get_mongodb_uri()
         embedding_model = OpenAIEmbeddings(
             base_url="https://openrouter.ai/api/v1",
-            model="perplexity/pplx-embed-v1-0.6b",
+            model="qwen/qwen3-embedding-8b",
             api_key=SecretStr(OPENROUTER_API_KEY or ""),
-            embedding_ctx_length=1024,
+            embedding_ctx_length=4096,
             check_embedding_ctx_length=False,
             model_kwargs={"encoding_format": "float"},
         )
@@ -256,13 +262,13 @@ class DocumentIndexer:
     def create_document_embeddings(self) -> dict[str, str]:
 
         openai_embeddings = OpenAIEmbeddings(
-                base_url="https://openrouter.ai/api/v1",
-                model="perplexity/pplx-embed-v1-0.6b",
-                api_key=SecretStr(OPENROUTER_API_KEY or ""),
-                embedding_ctx_length=1024,
-                check_embedding_ctx_length=False,
-                model_kwargs={"encoding_format": "float"},
-            )
+            base_url="https://openrouter.ai/api/v1",
+            model="qwen/qwen3-embedding-8b",
+            api_key=SecretStr(OPENROUTER_API_KEY or ""),
+            embedding_ctx_length=4096,
+            check_embedding_ctx_length=False,
+            model_kwargs={"encoding_format": "float"},
+        )
 
         try:
             self.vector_store = MongoDBAtlasVectorSearch.from_documents(
@@ -322,8 +328,8 @@ class DocumentIndexer:
         try:
             vector_store_instance = DocumentIndexer.create_vector_store_instance()
             vector_store_retriever = vector_store_instance.as_retriever(
-                search_type="similarity",
-                search_kwargs={"k": 3, "score_threshold": 0.50},
+                search_type="similarity_score_threshold",
+                search_kwargs={"score_threshold": 0.10},
             )
 
             documents = vector_store_retriever.invoke(user_query)

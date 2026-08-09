@@ -41,7 +41,7 @@ def search_documents(query: str) -> str:
 class ChatService:
     def __init__(self) -> None:
         self.llm = ChatOpenRouter(
-            model="qwen/qwen-2.5-7b-instruct",
+            model="qwen/qwen3-30b-a3b-instruct-2507",
             api_key=SecretStr(OPENROUTER_API_KEY or ""),
             model_kwargs={
                 "models": [

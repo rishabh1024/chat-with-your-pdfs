@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     app.state.file_uploader = await FileUpload.create()
     app.state.chat_service = ChatService()
     app.state.structured_llm_client = ChatOpenRouter(
-        model="cohere/command-r7b-12-2024",
+        model="qwen/qwen3-30b-a3b-instruct-2507",
         api_key=SecretStr(OPENROUTER_API_KEY or ""),
         model_kwargs={
             "models": [
@@ -60,12 +60,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
-  CORSMiddleware,
-  allow_origins=["*"],
-  allow_credentials=True,
-  allow_methods=["*"],
-  allow_headers=["*"],
+app.add_middleware(CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
