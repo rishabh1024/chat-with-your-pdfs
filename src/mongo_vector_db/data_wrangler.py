@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pymupdf
-from dotenv import load_dotenv
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_core.documents import Document
 from langchain_mongodb import MongoDBAtlasVectorSearch
@@ -28,11 +27,11 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from mongo_vector_db.main import MongoVectorDB
+from src.mongo_vector_db.main import MongoVectorDB
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-load_dotenv(override=True)
+# load_dotenv(override=True)
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
@@ -285,10 +284,8 @@ class DocumentIndexer:
 
 
     def prepare_document_for_embedding_creation(self):
-
         self.clean_document_data()
         self.chunk_and_split_document()
-
 
 
     @retry(
