@@ -1,19 +1,14 @@
 import os
 from uuid import UUID
 
-from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import tool
 from langchain_openrouter import ChatOpenRouter
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import RunnableConfig
 from pydantic import SecretStr
-
-from mongo_vector_db.data_wrangler import DocumentIndexer
-
-load_dotenv(override=True)
+from src.mongo_vector_db.data_wrangler import DocumentIndexer
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
@@ -25,23 +20,36 @@ SYSTEM_PROMPT = (
     "Otherwise answer directly. Do not fabricate information when asked about Rishabh."
 )
 
-
-@tool(description="This tool searches for relevant data in the vectorDB based on the search query")
-def search_documents(query: str) -> str:
+@tool(description="This tool searches for relevant documents from the"
+                "vector database using the provided search query")
+def search_documents(search_query: str) -> str:
     """Search the user's uploaded documents for information relevant to the query."""
-    print(f"Tool has been called with query: {query}")
+    print(f"Tool has been called with query: {search_query}")
 
-    documents = DocumentIndexer.get_similar_documents_from_database(user_query=query)
+    documents = DocumentIndexer.get_similar_documents_from_database(user_query=search_query)
     if isinstance(documents, list):
         return "\n\n---\n\n".join(document.page_content for document in documents)
     return f"No relevant document's were found. {documents['message']}"
 
-
 class ChatService:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        model_name="poolside/laguna-xs-2.1:free",
+        top_p: float=0.9,
+        max_tokens: int=10000,
+        frequency_penalty: float=0.2,
+        seed: int | None = None,
+        temperature: float = 0.3,
+        checkpointer = None,
+    ) -> None:
         self.openrouter_language_model = ChatOpenRouter(
             model="qwen/qwen3-30b-a3b-instruct-2507",
             api_key=SecretStr(OPENROUTER_API_KEY or ""),
+            temperature=temperature,
+            top_p=top_p,
+            frequency_penalty=frequency_penalty,
+            max_tokens=max_tokens,
+            seed=seed,
             model_kwargs={
                 "models": [
                     "qwen/qwen3-next-80b-a3b-instruct:free",
@@ -49,21 +57,24 @@ class ChatService:
                     "meta-llama/llama-3.2-3b-instruct:free",
                 ]
             },
-
         )
-        memory_checkpointer = InMemorySaver()
         self.rag_agent_with_tools = create_agent(
             model=self.openrouter_language_model,
             tools=[search_documents],
             system_prompt=SYSTEM_PROMPT,
-            checkpointer=memory_checkpointer,
+            checkpointer=checkpointer,
             middleware=[
                 ToolRetryMiddleware(backoff_factor=2.0, initial_delay=1.0),
                 ModelRetryMiddleware(backoff_factor=2.0, initial_delay=1.0),
             ],
+            name="RAG Agent",
         )
 
+        self.checkpointer = checkpointer
+
+
     def send_message(self, chat_id: UUID, user_message: str) -> tuple[str, list[str]]:
+
         thread_configuration = RunnableConfig({"configurable": {"thread_id": str(chat_id)}})
         agent_response= self.rag_agent_with_tools.invoke(
             {"messages": [{"role": "user", "content": user_message}]},

@@ -3,25 +3,22 @@ import os
 from typing import cast
 
 import httpx
-from dotenv import load_dotenv
 from fastapi import UploadFile
+from src.file_upload.models import StorageUploadResponse
 from storage3.exceptions import StorageApiError
 from storage3.types import FileOptions
 from supabase import SupabaseException
 from supabase.client import AsyncClient, create_async_client
 
-from mongo_vector_db.models import StorageUploadResponse
 
-load_dotenv()
-
-class FileUpload:
+class FileUploadClient:
 
     def __init__(self, supabase_client: AsyncClient) -> None:
         self.supabase_client = supabase_client
         self.bucket_name = "pdf-file-storage"
-    
+
     @classmethod
-    async def create(cls) -> "FileUpload":
+    async def create(cls) -> "FileUploadClient":
         return cls(await cls.get_supabase_client())
 
     @staticmethod
@@ -36,7 +33,7 @@ class FileUpload:
             return await create_async_client(supabase_url, supabase_key)
         except SupabaseException as e:
             raise SupabaseException("Exception raised by Supabase client.") from e
-    
+
     async def create_supabase_storage_bucket(self, bucket_id: str):
       if not await self.bucket_exists(bucket_id):
         response = await self.supabase_client.storage.create_bucket(
@@ -49,7 +46,7 @@ class FileUpload:
 
         print("Response from Buckert Creation: ", response)
       print("Bucket already exists. Bucket ID: ", bucket_id)
-    
+
     async def bucket_exists(self, bucket_id) -> bool:
       try:
         await self.supabase_client.storage.get_bucket(bucket_id)
@@ -64,13 +61,14 @@ class FileUpload:
       """Return the SHA-256 digest used as the document's stable ID."""
       return hashlib.sha256(file_content).hexdigest()
 
+    # Check the file's mime type and throw an error for invalid file type
     async def upload_to_file_storage(
       self, uploaded_file_content_in_bytes: bytes,
       original_filename: str,
       file_hash: str
     ) -> StorageUploadResponse:
 
-        print("Uploading file the Supabase Object Storage")
+        print("Uploading file to object storage")
         storage_path = f"{self.bucket_name}/pdf-files/{file_hash}.pdf"
 
         bucket_storage_client = self.supabase_client.storage.from_(self.bucket_name)
@@ -117,6 +115,6 @@ class FileUpload:
             upload_status="Success",
             upload_error=None,
         )
-      
+
     def read_pdf_file(self, file_to_read: UploadFile):
       print(type(file_to_read), dir(file_to_read))

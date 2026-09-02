@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import UUID4, BaseModel
+from pydantic import BaseModel
 
 
 class StorageUploadResponse(BaseModel):
@@ -18,9 +18,3 @@ class FileUploadResponse(BaseModel):
     upload_status: Literal["Success", "Failed", "Already Exists"]
     upload_error: str | None
     document_indexing_status: dict[str, str]
-
-class ChatResponseModel(BaseModel):
-    
-    chat_id: UUID4
-    ai_message: str
-    chat_history_messages: list[str]
