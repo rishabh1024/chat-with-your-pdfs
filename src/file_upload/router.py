@@ -6,42 +6,42 @@ from typing import Annotated, cast
 from uuid import uuid4
 
 import pymupdf
-from dotenv import load_dotenv
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from langchain_openrouter import ChatOpenRouter
-from pydantic import SecretStr
 from src.auth.dependencies import get_current_authenticated_user
 from src.auth.models import AuthenticatedUser
+from src.core.settings import load_environment_variables
 from src.file_upload.file_upload_client import FileUploadClient
 from src.mongo_vector_db.data_wrangler import DocumentIndexer
 from src.mongo_vector_db.indexing_tracker import IndexingStatusTracker
-from src.mongo_vector_db.main import MongoVectorDB
 
 from .models import FileUploadResponse, StorageUploadResponse
 
-load_dotenv()
-
+settings = load_environment_variables()
 
 REQUIRED_FILE = File(...)
 
-router = APIRouter(
-    prefix="/upload",
-    tags=["file upload"])
+router = APIRouter(prefix="/upload", tags=["file upload"])
 
 logger = logging.getLogger(__name__)
 
 indexing_tracker = IndexingStatusTracker()
 
+schema = {
+    "title": "DocumentMetadata",
+    "properties": {
+        "title": {"type": "string"},
+        "keywords": {"type": "array", "items": {"type": "string"}},
+        "hasCode": {"type": "boolean"},
+    },
+    "required": ["title", "keywords", "hasCode"],
+}
+
+
 def get_file_uploader(request: Request) -> FileUploadClient:
     return request.app.state.file_upload_client
 
-
-def get_mongodb_client(request: Request) -> MongoVectorDB:
-    return request.app.state.mongodb_client
-
-def get_llm_client_for_structured_response(request: Request) -> ChatOpenRouter:
-    return request.app.state.structured_llm_client
 
 def create_openrouter_chat(
     *,
@@ -52,7 +52,7 @@ def create_openrouter_chat(
 ) -> ChatOpenRouter:
     return ChatOpenRouter(
         model=model,
-        api_key=SecretStr(api_key),
+        api_key=settings.openrouter.openrouter_api_key,
         temperature=temperature,
         model_kwargs={
             "models": [
@@ -65,17 +65,34 @@ def create_openrouter_chat(
     )
 
 
+def get_llm_client_for_structured_output(
+    *,
+    model: str = "qwen/qwen3-30b-a3b-instruct-2507",
+    temperature: float = 0.3,
+):
+    llm_client = ChatOpenRouter(
+        model=model,
+        api_key=settings.openrouter.openrouter_api_key,
+        model_kwargs={
+            "models": [
+                "qwen/qwen-2.5-7b-instruct",
+                "openai/gpt-oss-20b:free",
+                "meta-llama/llama-3.2-3b-instruct:free",
+            ]
+        },
+        verbose=True,
+        temperature=temperature,
+    ).with_structured_output(schema, method="json_schema")
+    return llm_client
+
+
 @router.post("/", response_model=FileUploadResponse)
 async def upload_file(
     background_tasks: BackgroundTasks,
     authenticated_user: Annotated[AuthenticatedUser, Depends(get_current_authenticated_user)],
     file_uploader: Annotated[FileUploadClient, Depends(get_file_uploader)],
-    structured_llm: Annotated[ChatOpenRouter, Depends(get_llm_client_for_structured_response)],
     input_file: UploadFile = REQUIRED_FILE,
 ) -> FileUploadResponse:
-
-    print(f"User has uploaded a file named {input_file.filename}")
-
     file_contents_of_uploaded_file = await input_file.read()
 
     hash_of_file_contents = FileUploadClient.calculate_file_hash(file_contents_of_uploaded_file)
@@ -83,6 +100,8 @@ async def upload_file(
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp:
         temp.write(file_contents_of_uploaded_file)
         temp_file_path = temp.name
+
+    structured_llm = get_llm_client_for_structured_output()
 
     document_indexer = DocumentIndexer(
         structured_llm_instance=structured_llm,
@@ -93,19 +112,56 @@ async def upload_file(
     try:
         document_indexer.prepare_document_for_embedding_creation()
     except FileNotFoundError as e:
+        logger.warning(
+            "upload.preparation.rejected document_id=%s user_id=%s reason=file_not_found",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
         raise HTTPException(status_code=404, detail=str(e)) from e
     except (pymupdf.EmptyFileError, ValueError) as e:
+        logger.warning(
+            "upload.preparation.rejected document_id=%s user_id=%s reason=invalid_pdf",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
         raise HTTPException(status_code=422, detail=str(e)) from e
     except pymupdf.FileDataError as e:
+        logger.warning(
+            "upload.preparation.rejected document_id=%s user_id=%s reason=corrupt_pdf",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
         raise HTTPException(status_code=422, detail=str(e)) from e
     except RuntimeError as e:
+        logger.error(
+            "upload.preparation.failed document_id=%s user_id=%s error_type=%s",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+            type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+    logger.info(
+        "upload.preparation.completed document_id=%s user_id=%s",
+        hash_of_file_contents,
+        authenticated_user.user_id,
+    )
 
     file_upload_response = await upload_pdf_file(
         input_file=input_file,
         file_contents=file_contents_of_uploaded_file,
         file_uploader=file_uploader,
-        file_hash=hash_of_file_contents
+        file_hash=hash_of_file_contents,
+    )
+    storage_event_level = (
+        logging.ERROR if file_upload_response.upload_status == "Failed" else logging.INFO
+    )
+    logger.log(
+        storage_event_level,
+        "upload.storage.completed document_id=%s user_id=%s status=%s",
+        hash_of_file_contents,
+        authenticated_user.user_id,
+        file_upload_response.upload_status.lower().replace(" ", "_"),
     )
 
     document_indexing_status = DocumentIndexer.get_status_for_document_indexing(
@@ -132,6 +188,11 @@ async def upload_file(
         background_tasks.add_task(
             _run_document_indexing_task, document_indexer, hash_of_file_contents
         )
+        logger.info(
+            "upload.indexing.scheduled document_id=%s user_id=%s",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
 
         document_to_vector_status = {
             "status": "Pending",
@@ -144,6 +205,11 @@ async def upload_file(
         and document_indexing_status is not None
         and document_indexing_status["status"] == "success"
     ):
+        logger.debug(
+            "upload.indexing.skipped document_id=%s user_id=%s reason=already_indexed",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
         document_to_vector_status = {
             "status": "Success",
             "message": "Document Indexing is already indexed",
@@ -153,11 +219,21 @@ async def upload_file(
         and document_indexing_status is not None
         and document_indexing_status["status"] == "pending"
     ):
+        logger.debug(
+            "upload.indexing.skipped document_id=%s user_id=%s reason=already_pending",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
         document_to_vector_status = {
             "status": "Pending",
             "message": "Document indexing is already in progress.",
         }
     else:
+        logger.warning(
+            "upload.indexing.skipped document_id=%s user_id=%s reason=storage_failed",
+            hash_of_file_contents,
+            authenticated_user.user_id,
+        )
         document_to_vector_status = {
             "status": "Failed",
             "message": "File Upload failed. The file has not been indexed in the vector database.",
@@ -172,9 +248,9 @@ async def upload_file(
     )
 
 
-async def _run_document_indexing_task(document_indexer: DocumentIndexer,
-                                      document_id: str) -> None:
+async def _run_document_indexing_task(document_indexer: DocumentIndexer, document_id: str) -> None:
     try:
+        logger.info("upload.indexing.started document_id=%s", document_id)
         await document_indexer.convert_document_to_vector()
 
         DocumentIndexer.set_status_for_document_indexing(
@@ -186,9 +262,14 @@ async def _run_document_indexing_task(document_indexer: DocumentIndexer,
         indexing_tracker.mark_complete(
             document_id, status="success", message="Document indexed successfully."
         )
+        logger.info("upload.indexing.completed document_id=%s", document_id)
 
-    except Exception as e:
-        logger.exception("Background indexing failed for document %s", document_id)
+    except Exception as error:
+        logger.error(
+            "upload.indexing.failed document_id=%s error_type=%s",
+            document_id,
+            type(error).__name__,
+        )
 
         DocumentIndexer.set_status_for_document_indexing(
             document_id=document_id,
@@ -197,7 +278,7 @@ async def _run_document_indexing_task(document_indexer: DocumentIndexer,
         )
 
         indexing_tracker.mark_complete(
-            document_id, status="failed", message=f"Indexing failed: {e}"
+            document_id, status="failed", message="Document indexing failed."
         )
 
 
@@ -206,9 +287,6 @@ async def index_status_sse(
     document_id: str,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_authenticated_user)],
 ) -> StreamingResponse:
-
-    print("Current User: ", current_user.user_id, current_user.claims)
-
     async def event_stream() -> AsyncGenerator[str, None]:
         yield "event: connected\ndata: Waiting for indexing result...\n\n"
         result = await indexing_tracker.wait_for_result(document_id)
@@ -218,12 +296,13 @@ async def index_status_sse(
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},)
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 async def upload_pdf_file(
-    input_file: UploadFile, file_contents: bytes,
-    file_uploader: FileUploadClient, file_hash) -> StorageUploadResponse:
+    input_file: UploadFile, file_contents: bytes, file_uploader: FileUploadClient, file_hash
+) -> StorageUploadResponse:
 
     original_file_name_string = input_file.filename
 

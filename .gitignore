@@ -23,3 +23,7 @@ wheels/
 
 # test code file
 src/mongo_vector_db/test_code.py
+src/mongo_vector_db/rag_agent.py
+
+# logs files
+logs/

@@ -1,6 +1,5 @@
 import datetime
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -16,9 +15,11 @@ from openrouter.errors.toomanyrequestsresponse_error import TooManyRequestsRespo
 from openrouter.errors.unauthorizedresponse_error import UnauthorizedResponseError
 from pydantic import SecretStr, ValidationError
 from pymongo.errors import ServerSelectionTimeoutError
+from src.core.logs import safe_before_sleep_log
+from src.core.settings import load_environment_variables
+from src.mongo_vector_db.main import MongoVectorDB
 from tenacity import (
     TryAgain,
-    before_sleep_log,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
@@ -27,23 +28,21 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from src.mongo_vector_db.main import MongoVectorDB
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# load_dotenv(override=True)
+settings = load_environment_variables()
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = settings.openrouter.openrouter_api_key.get_secret_value()
 
 logger = logging.getLogger(__name__)
 
-class DocumentIndexer:
 
+class DocumentIndexer:
     def __init__(
         self,
         structured_llm_instance: ChatOpenRouter,
         file_path: str,
-        document_id: str | None = None
+        document_id: str | None = None,
     ) -> None:
         self.file_path = file_path
         self.document_id = document_id
@@ -52,17 +51,14 @@ class DocumentIndexer:
         self.structured_llm_instance = structured_llm_instance
         self.vector_store: MongoDBAtlasVectorSearch | None = None
 
-
     @staticmethod
     def get_mongodb_uri() -> str:
 
-        username = os.environ.get("MONGODB_USER")
-        password = os.environ.get("PASSWORD")
-        cluster_id = os.environ.get("CLUSTER_ID")
+        username = settings.mongo.user.get_secret_value()
+        password = settings.mongo.password.get_secret_value()
+        cluster_id = settings.mongo.cluster_id
 
-        MONGO_URI = (
-            f"mongodb+srv://{username}:{password}@cluster0.jsbdmm9.mongodb.net/?appName={cluster_id}"
-        )
+        MONGO_URI = f"mongodb+srv://{username}:{password}@cluster0.jsbdmm9.mongodb.net/?appName={cluster_id}"
 
         return MONGO_URI
 
@@ -70,27 +66,23 @@ class DocumentIndexer:
     def get_document_index_status_collection():
         mongo_db = MongoVectorDB(
             uri=DocumentIndexer.get_mongodb_uri(),
-            db_name=os.environ.get("MONGO_DB", "sample_mflix"),
+            db_name=settings.mongo.db_name,
         )
         return mongo_db.db["document_index_status"]
 
     @staticmethod
-    def get_status_for_document_indexing(
-        document_id
-    ) -> dict[str, Any] | None:
+    def get_status_for_document_indexing(document_id) -> dict[str, Any] | None:
         if not document_id:
             raise ValueError("document_id is required to store indexing status.")
         status_collection = DocumentIndexer.get_document_index_status_collection()
-        return status_collection.find_one({'document_id': document_id})
-
-
-
+        return status_collection.find_one({"document_id": document_id})
 
     @staticmethod
-    def set_status_for_document_indexing(document_id,
-                                         status: Literal["pending", "success", "failed"],
-                                         message: str,
-                                        ) -> None:
+    def set_status_for_document_indexing(
+        document_id,
+        status: Literal["pending", "success", "failed"],
+        message: str,
+    ) -> None:
         if not document_id:
             raise ValueError("document_id is required to store indexing status.")
         now = datetime.datetime.now(datetime.UTC)
@@ -110,21 +102,18 @@ class DocumentIndexer:
             upsert=True,
         )
 
-
-
     @staticmethod
     def get_mongodb_collection():
         MONGODB_URI = DocumentIndexer.get_mongodb_uri()
 
-        return MongoVectorDB(
-            uri=MONGODB_URI, db_name=os.environ.get("MONGO_DB", "sample_mflix")
-        ).collection
+        return MongoVectorDB(uri=MONGODB_URI, db_name=settings.mongo.db_name).collection
 
     @retry(
         stop=stop_after_attempt(2),
-        retry=retry_if_exception_type(pymupdf.FileDataError)
+        retry=retry_if_exception_type(pymupdf.FileDataError),
+        before_sleep=safe_before_sleep_log(logger, "vector.document.load.retry"),
     )
-    def _load_document(self, page_mode:Literal['page', 'single']='page') -> list[Document]:
+    def _load_document(self, page_mode: Literal["page", "single"] = "page") -> list[Document]:
 
         if not Path(self.file_path).is_file():
             raise FileNotFoundError("The PDF file could not be found. Please try uploading again.")
@@ -132,10 +121,20 @@ class DocumentIndexer:
         try:
             loader = PyMuPDFLoader(self.file_path, mode=page_mode)
             documents = loader.load()
+            logger.debug(
+                "vector.document.load.completed document_id=%s count=%s",
+                self.document_id,
+                len(documents),
+            )
             return documents
         except ValueError:
             loader = PyMuPDFLoader(self.file_path, mode="page")
             documents = loader.load()
+            logger.debug(
+                "vector.document.load.completed document_id=%s count=%s",
+                self.document_id,
+                len(documents),
+            )
             return documents
         except pymupdf.EmptyFileError as empty_file_error:
             raise pymupdf.EmptyFileError(
@@ -149,12 +148,13 @@ class DocumentIndexer:
         except Exception as e:
             raise RuntimeError(f"Error Loading Document: {e}") from e
 
-
     def preview_data_from_pdf(self) -> None:
         pages = self._load_document()
-        for page in pages:
-            print(page.page_content[:100])
-
+        logger.debug(
+            "vector.document.preview.completed document_id=%s count=%s",
+            self.document_id,
+            len(pages),
+        )
 
     def clean_document_data(self) -> None:
         pages: list[Document] = self._load_document()
@@ -163,7 +163,11 @@ class DocumentIndexer:
             # print("Page content: ", page.page_content)
             if len(page.page_content.split()) > 10:
                 self.cleaned_documents.append(page.page_content)
-
+        logger.debug(
+            "vector.document.clean.completed document_id=%s count=%s",
+            self.document_id,
+            len(self.cleaned_documents),
+        )
 
     def chunk_and_split_document(self) -> None:
         if not self.cleaned_documents:
@@ -174,12 +178,14 @@ class DocumentIndexer:
             chunk_overlap=150,
         )
 
-        self.chunked_document = []
-
         self.chunked_documents = document_to_chunk_splitter.split_documents(
             [Document(page_content=document) for document in self.cleaned_documents]
         )
-
+        logger.debug(
+            "vector.document.chunk.completed document_id=%s count=%s",
+            self.document_id,
+            len(self.chunked_documents),
+        )
 
     def strip_thinking(self, text: str) -> str:
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
@@ -189,7 +195,7 @@ class DocumentIndexer:
         | retry_if_exception_type(UnauthorizedResponseError),
         stop=stop_after_attempt(3),
         wait=wait_fixed(2) + wait_random(0, 3),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=safe_before_sleep_log(logger, "vector.metadata.generate.retry"),
         reraise=True,
     )
     async def _generate_metadata(self, text: str) -> dict:
@@ -199,9 +205,7 @@ class DocumentIndexer:
                 raise ValueError("Metadata generated is not in the expected format.")
             return metadata
         except UnauthorizedResponseError as openrouter_error:
-            raise Exception("Please check your API Keys. The user"
-                            f"was not found: {openrouter_error}") from openrouter_error
-
+            raise RuntimeError("Metadata provider authorization failed.") from openrouter_error
 
     async def add_metadata_to_document(self):
 
@@ -217,22 +221,28 @@ class DocumentIndexer:
                     continue
                 document_metadata = await self._generate_metadata(document_chunk.page_content)
                 if document_metadata:
-
                     if isinstance(document_metadata, str):
                         document_metadata = self.strip_thinking(document_metadata)
                     else:
                         document_chunk.metadata = dict(document_metadata)
                 else:
-                    print("No metadata found for document")
+                    logger.debug(
+                        "vector.metadata.generate.empty document_id=%s",
+                        self.document_id,
+                    )
                 if self.document_id:
                     document_chunk.metadata["document_id"] = self.document_id
+            logger.debug(
+                "vector.metadata.generate.completed document_id=%s count=%s",
+                self.document_id,
+                len(self.chunked_documents),
+            )
         except TypeError as type_error:
             raise type_error
         except TooManyRequestsResponseError as too_many_requests_error:
             raise too_many_requests_error
         except Exception as e:
             raise RuntimeError(f"Failed to add metadata to document. Error Reason: {e}") from e
-
 
     @staticmethod
     def create_vector_store_instance() -> MongoDBAtlasVectorSearch:
@@ -256,8 +266,11 @@ class DocumentIndexer:
 
         return vector_store_instance
 
-
-    @retry(stop=stop_after_attempt(3), wait=wait_random_exponential(min=2))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_random_exponential(min=2),
+        before_sleep=safe_before_sleep_log(logger, "vector.embedding.create.retry"),
+    )
     def create_document_embeddings(self) -> dict[str, str]:
 
         openai_embeddings = OpenAIEmbeddings(
@@ -276,37 +289,44 @@ class DocumentIndexer:
                 collection=DocumentIndexer.get_mongodb_collection(),
                 index_name="document_embeddings",
             )
-            return  {"status": "Success", "message": "Document Embeddings Created Successfully"}
+            logger.debug(
+                "vector.embedding.create.completed document_id=%s count=%s",
+                self.document_id,
+                len(self.chunked_documents),
+            )
+            return {"status": "Success", "message": "Document Embeddings Created Successfully"}
         except ServerSelectionTimeoutError as server_selection_error:
             raise server_selection_error
         except Exception as e:
             raise e
 
-
     def prepare_document_for_embedding_creation(self):
         self.clean_document_data()
         self.chunk_and_split_document()
-
 
     @retry(
         reraise=True,
         stop=stop_after_attempt(3),
         retry=retry_if_exception_type(TryAgain)
         | retry_if_exception_type(TooManyRequestsResponseError)
-        | retry_if_exception_type(ServerSelectionTimeoutError)
+        | retry_if_exception_type(ServerSelectionTimeoutError),
+        before_sleep=safe_before_sleep_log(logger, "vector.indexing.retry"),
     )
     async def convert_document_to_vector(self) -> dict[str, str]:
-        print("Creating Embeddings for the uploaded Document and adding to the Vector DB")
+        logger.debug("vector.indexing.started document_id=%s", self.document_id)
 
-        if not getattr(self, "chunked_douments", None):
+        if not getattr(self, "chunked_documents", None):
             self.prepare_document_for_embedding_creation()
 
         try:
             await self.add_metadata_to_document()
             embeddings_status = dict()
             embeddings_status = self.create_document_embeddings()
-            print(f"Status for creation of document embedding: {embeddings_status["status"]}")
             if embeddings_status["status"] == "Success":
+                logger.debug(
+                    "vector.indexing.completed document_id=%s",
+                    self.document_id,
+                )
                 return embeddings_status
             else:
                 raise TryAgain
@@ -319,7 +339,6 @@ class DocumentIndexer:
         except Exception as e:
             raise e
 
-
     @staticmethod
     def get_similar_documents_from_database(user_query: str) -> list[Document] | dict:
         try:
@@ -330,16 +349,31 @@ class DocumentIndexer:
             )
 
             documents = vector_store_retriever.invoke(user_query)
+            logger.debug(
+                "vector.retrieval.completed count=%s",
+                len(documents),
+            )
             return documents
         except ServerSelectionTimeoutError as e:
+            logger.warning(
+                "vector.retrieval.failed error_type=%s",
+                type(e).__name__,
+            )
             return {
                 "status": "Failed",
                 "message": "Failed to Create Document Embeddings. ",
                 "error": str(e),
             }
         except Exception as e:
-            return {"status": "Failed",
-                    "message": "Failed to create Document Embeddings", "error": str(e)}
+            logger.error(
+                "vector.retrieval.failed error_type=%s",
+                type(e).__name__,
+            )
+            return {
+                "status": "Failed",
+                "message": "Failed to create Document Embeddings",
+                "error": str(e),
+            }
 
 
 # async def main():

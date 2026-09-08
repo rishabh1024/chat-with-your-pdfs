@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "detailed": {
+      "format": "[%(levelname)s|%(name)s|L%(lineno)d] %(asctime)s message=%(message)s",
+      "datefmt": "%Y-%m-%dT%H:%S%z"
+    }
+  },
+  "handlers": {
+    "stderr": {
+      "class": "logging.StreamHandler",
+      "level": "WARNING",
+      "formatter": "detailed",
+      "stream": "ext://sys.stderr"
+    },
+    "file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "DEBUG",
+      "formatter": "detailed",
+      "filename": "logs/app.log",
+      "maxBytes": 10000,
+      "backupCount": 3
+    }
+  },
+  "loggers": {
+    "sqlalchemy.engine": {
+      "level": "WARNING"
+    },
+    "sqlalchemy.pool": {
+      "level": "WARNING"
+    },
+    "psycopg.pool": {
+      "level": "WARNING"
+    }
+  },
+  "root": {
+    "level": "DEBUG",
+    "handlers": ["stderr", "file"]
+  }
+}

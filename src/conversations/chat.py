@@ -1,4 +1,4 @@
-import os
+import logging
 from uuid import UUID
 
 from langchain.agents import create_agent
@@ -8,9 +8,12 @@ from langchain_core.tools import tool
 from langchain_openrouter import ChatOpenRouter
 from langgraph.graph.state import RunnableConfig
 from pydantic import SecretStr
+from src.core.settings import load_environment_variables
 from src.mongo_vector_db.data_wrangler import DocumentIndexer
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+settings = load_environment_variables()
+OPENROUTER_API_KEY = settings.openrouter.openrouter_api_key.get_secret_value()
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the user's questions clearly and concisely. "
@@ -20,27 +23,31 @@ SYSTEM_PROMPT = (
     "Otherwise answer directly. Do not fabricate information when asked about Rishabh."
 )
 
-@tool(description="This tool searches for relevant documents from the"
-                "vector database using the provided search query")
+
+@tool(
+    description="This tool searches for relevant documents from the"
+    "vector database using the provided search query"
+)
 def search_documents(search_query: str) -> str:
     """Search the user's uploaded documents for information relevant to the query."""
-    print(f"Tool has been called with query: {search_query}")
+    logger.debug("conversation.chat.tool.search.started")
 
     documents = DocumentIndexer.get_similar_documents_from_database(user_query=search_query)
     if isinstance(documents, list):
         return "\n\n---\n\n".join(document.page_content for document in documents)
     return f"No relevant document's were found. {documents['message']}"
 
+
 class ChatService:
     def __init__(
         self,
         model_name="poolside/laguna-xs-2.1:free",
-        top_p: float=0.9,
-        max_tokens: int=10000,
-        frequency_penalty: float=0.2,
+        top_p: float = 0.9,
+        max_tokens: int = 10000,
+        frequency_penalty: float = 0.2,
         seed: int | None = None,
         temperature: float = 0.3,
-        checkpointer = None,
+        checkpointer=None,
     ) -> None:
         self.openrouter_language_model = ChatOpenRouter(
             model="qwen/qwen3-30b-a3b-instruct-2507",
@@ -72,11 +79,10 @@ class ChatService:
 
         self.checkpointer = checkpointer
 
-
     def send_message(self, chat_id: UUID, user_message: str) -> tuple[str, list[str]]:
 
         thread_configuration = RunnableConfig({"configurable": {"thread_id": str(chat_id)}})
-        agent_response= self.rag_agent_with_tools.invoke(
+        agent_response = self.rag_agent_with_tools.invoke(
             {"messages": [{"role": "user", "content": user_message}]},
             config=thread_configuration,
         )

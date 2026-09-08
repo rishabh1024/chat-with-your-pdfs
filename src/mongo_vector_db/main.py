@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from pymongo.operations import SearchIndexModel
 from pymongo.server_api import ServerApi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
 
 
 class MongoVectorDB:
@@ -23,37 +25,39 @@ class MongoVectorDB:
 
     def test_database_connection(self):
         self.client.admin.command("ping")
-        print("Pinged your deployment. You successfully connected to MongoDB!")
+        logger.info("vector.database.connection.completed")
 
     def get_all_documents_from_collection(self, collection_name: str):
         return self.db[collection_name].find(limit=10)
 
     def get_all_search_indexes_from_collection(self, collection_name: str) -> list[Any]:
-      list_of_all_search_indexes = self.db[collection_name].list_search_indexes()
-      return [index["name"] for index in list_of_all_search_indexes]
+        list_of_all_search_indexes = self.db[collection_name].list_search_indexes()
+        return [index["name"] for index in list_of_all_search_indexes]
 
     def create_search_index_model(self, index_name: str):
-      return SearchIndexModel(
-        definition={
-          "fields": [
-            {
-              "type": "vector",
-              "path": "mebedding",
-              "numDimensions": 1536,
-              "similarity": "cosine",
-            }
-          ]
-        },
-        name=index_name,
-        type="vectorSearch",
-      )
+        return SearchIndexModel(
+            definition={
+                "fields": [
+                    {
+                        "type": "vector",
+                        "path": "mebedding",
+                        "numDimensions": 1536,
+                        "similarity": "cosine",
+                    }
+                ]
+            },
+            name=index_name,
+            type="vectorSearch",
+        )
 
     def create_search_index(self, collection_name: str, index_name: str):
         search_index_model = self.create_search_index_model(index_name)
         self.db[collection_name].create_search_index(search_index_model)
+        logger.info("vector.search_index.create.completed")
 
     def query_search_index(self, collection_name: str, index_name: str, query: str):
-      return self.db[collection_name].aggregate
+        return self.db[collection_name].aggregate
+
 
 # if __name__ == "__main__":
 
