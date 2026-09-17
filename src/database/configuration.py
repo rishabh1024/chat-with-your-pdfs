@@ -1,7 +1,8 @@
-import os
+import logging
 from collections.abc import AsyncGenerator
 from functools import cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from langgraph.checkpoint.postgres import PostgresSaver
 from sqlalchemy.ext.asyncio import (
@@ -10,25 +11,31 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from src.core.settings import load_environment_variables
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
+settings = load_environment_variables()
+logger = logging.getLogger(__name__)
+
 
 @cache
-def get_db_connection_string(connection_type: Literal['async', 'sync'] = 'async') -> str:
-    db_connection_string = os.getenv("SUPABASE_DB_URL")
+def get_db_connection_string(connection_type: Literal["async", "sync"] = "async") -> str:
+    db_connection_string = settings.supabase.db_url
 
     if not db_connection_string:
         raise ValueError("The value for env variable SUPABASE_DB_URL is not set.")
 
-    if db_connection_string.startswith("postgresql://") and connection_type == 'async':
+    if db_connection_string.startswith("postgresql://") and connection_type == "async":
         db_connection_string = db_connection_string.replace(
-            "postgresql://", "postgresql+asyncpg://", 1)
+            "postgresql://", "postgresql+asyncpg://", 1
+        )
     elif db_connection_string.startswith("postgresql://") and connection_type == "sync":
         return db_connection_string
     elif not db_connection_string.startswith("postgresql://"):
-      raise ValueError(f"Invalid Database URl: {db_connection_string[:20]}")
+        scheme = urlsplit(db_connection_string).scheme or "missing"
+        raise ValueError(f"Invalid database URL scheme: {scheme}")
     return db_connection_string
 
 
@@ -37,20 +44,31 @@ async def init_database() -> None:
     global _engine, _session_factory
 
     if _engine is not None:
+        logger.debug("database.initialize.skipped status=already_initialized")
         return
 
-    _engine = create_async_engine(
-        get_db_connection_string(),
-        pool_size=int(os.environ.get("DB_POOL_SIZE", "5")),
-        max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "10")),
-        pool_pre_ping=True,  # Verify connections before use
-    )
-    _session_factory = async_sessionmaker(
-        _engine,
-        expire_on_commit=False,
-        class_=AsyncSession,
-    )
+    try:
+        _engine = create_async_engine(
+            get_db_connection_string(),
+            pool_size=settings.database.pool_size,
+            max_overflow=settings.database.max_overflow,
+            pool_pre_ping=True,  # Verify connections before use
+        )
+        _session_factory = async_sessionmaker(
+            _engine,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+    except Exception as error:
+        _engine = None
+        _session_factory = None
+        logger.error(
+            "database.initialize.failed error_type=%s",
+            type(error).__name__,
+        )
+        raise
 
+    logger.info("database.initialize.completed")
 
 
 async def close_database() -> None:
@@ -58,34 +76,53 @@ async def close_database() -> None:
     global _engine, _session_factory
 
     if _engine is not None:
-        await _engine.dispose()
-        _engine = None
-        _session_factory = None
+        try:
+            await _engine.dispose()
+        except Exception as error:
+            logger.error(
+                "database.shutdown.failed error_type=%s",
+                type(error).__name__,
+            )
+            raise
+        else:
+            _engine = None
+            _session_factory = None
+            logger.info("database.shutdown.completed")
+    else:
+        logger.debug("database.shutdown.skipped status=not_initialized")
 
 
-async def get_database_session()-> AsyncGenerator[AsyncSession, None]:
+async def get_database_session() -> AsyncGenerator[AsyncSession, None]:
 
-  if not _session_factory:
-    raise RuntimeError("Database not initialized. Call init_database first.")
+    if not _session_factory:
+        raise RuntimeError("Database not initialized. Call init_database first.")
 
-  async with _session_factory() as session:
-    try:
-      yield session
-    except Exception:
-      await session.rollback()
-      raise
-    finally:
-        await session.close()
+    async with _session_factory() as session:
+        try:
+            yield session
+        except Exception:
+            logger.debug("database.session.rollback")
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 def initialize_app_checkpointer() -> None:
     """Create LangGraph checkpoint tables."""
 
-    postgres_connection_string: str = get_db_connection_string("sync")
-
-    if postgres_connection_string:
+    try:
+        postgres_connection_string: str = get_db_connection_string("sync")
         with PostgresSaver.from_conn_string(conn_string=postgres_connection_string) as checkpointer:
             checkpointer.setup()
+    except Exception as error:
+        logger.error(
+            "database.checkpointer.initialize.failed error_type=%s",
+            type(error).__name__,
+        )
+        raise
+
+    logger.info("database.checkpointer.initialize.completed")
 
 
 # async def create():

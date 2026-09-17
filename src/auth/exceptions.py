@@ -11,3 +11,7 @@ class InvalidTokenError(AuthenticationError):
 class MissingTokenError(AuthenticationError):
     """Raised when no token is provided."""
     pass
+
+class AuthenticationProviderError(AuthenticationError):
+    """Raised when the authentication provider is unavailable."""
+    pass
