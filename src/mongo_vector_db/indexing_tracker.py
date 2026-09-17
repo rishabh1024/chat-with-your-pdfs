@@ -17,6 +17,9 @@ class IndexingStatusTracker:
         self._events[document_id] = asyncio.Event()
         logger.debug("indexing.tracker.registered document_id=%s", document_id)
 
+    def is_registered(self, document_id: str) -> bool:
+        return document_id in self._events
+
     def mark_complete(self, document_id: str, status: str, message: str) -> None:
         self._results[document_id] = {"status": status, "message": message}
         if event := self._events.get(document_id):

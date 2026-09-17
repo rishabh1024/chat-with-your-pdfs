@@ -1,52 +1,46 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.dependencies import get_current_authenticated_user
 from src.auth.models import AuthenticatedUser
-from src.conversations.dependencies import validate_conversationid_and_user_authorization
-from src.conversations.models import ConversationListResponse
-from src.database.configuration import get_database_session
+from src.conversations.dependencies import (
+    get_conversation_service,
+    validate_conversationid_and_user_authorization,
+)
+from src.conversations.service import ConversationService
 from src.database.models import Conversation
 
-from .models import (
+from .schemas import (
     AIMessageResponse,
     ChatMessage,
+    ConversationListResponse,
     ConversationMessagesResponse,
     ConversationResponse,
     CreateConversationRequest,
-    LLMConfiguration,
     UserMessageRequest,
-)
-from .service import (
-    create_a_new_conversation,
-    delete_conversation_thread,
-    get_list_all_conversation_for_user,
-    load_conversation_from_database,
-    process_user_query_with_rag,
 )
 
 router = APIRouter(
     prefix="/conversations",
     tags=["conversations"],
-    dependencies=[Depends(get_database_session), Depends(get_current_authenticated_user)],
+    dependencies=[Depends(get_current_authenticated_user)],
 )
 
-DatabaseSession = Annotated[AsyncSession, Depends(get_database_session)]
 User = Annotated[AuthenticatedUser, Depends(get_current_authenticated_user)]
 ValidatedConversation = Annotated[
     Conversation, Depends(validate_conversationid_and_user_authorization)
 ]
+ConversationSvc = Annotated[ConversationService, Depends(get_conversation_service)]
 
 
-@router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(path="", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_conversation(
     request_body: CreateConversationRequest,
     current_user: User,
-    database_session: DatabaseSession,
+    service: ConversationSvc,
 ) -> ConversationResponse:
-    new_conversation = await create_a_new_conversation(
-        database_session, current_user.user_id, title=request_body.title
+    new_conversation = await service.create_conversation(
+        current_user.user_id, title=request_body.title
     )
     return ConversationResponse.model_validate(new_conversation)
 
@@ -54,13 +48,11 @@ async def create_new_conversation(
 @router.get("", response_model=ConversationListResponse)
 async def list_all_conversations_for_the_user(
     current_user: User,
-    database_session: DatabaseSession,
+    service: ConversationSvc,
 ) -> ConversationListResponse:
-
-    total_threads, list_of_threads = await get_list_all_conversation_for_user(
-        user_id=current_user.user_id, db_session=database_session
+    total_threads, list_of_threads = await service.list_conversations(
+        user_id=current_user.user_id
     )
-
     return ConversationListResponse(
         count_conversations=total_threads,
         conversations=[ConversationResponse.model_validate(thread) for thread in list_of_threads],
@@ -70,47 +62,40 @@ async def list_all_conversations_for_the_user(
 @router.delete(path="/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
     valid_conversation: ValidatedConversation,
-    database_session: DatabaseSession,
+    service: ConversationSvc,
 ) -> None:
-    await delete_conversation_thread(conversation=valid_conversation, db_session=database_session)
+    await service.delete_conversation(conversation=valid_conversation)
 
 
 @router.post(
-    "/{conversation_id}/messages", response_model=AIMessageResponse, status_code=status.HTTP_200_OK
+    "/{conversation_id}/messages",
+    response_model=AIMessageResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def send_message_to_agent(
-    conversation_id,
     user_message: UserMessageRequest,
-    database_session: DatabaseSession,
-    model_configuration: LLMConfiguration,
-):
-    agent_response = await process_user_query_with_rag(
-        conversation_id,
-        user_message.message_content,
-        db_session=database_session,
-        llm_configuration=model_configuration,
+    conversation: ValidatedConversation,
+    service: ConversationSvc,
+) -> AIMessageResponse:
+    agent_response = await service.send_user_message(
+        conversation_id=conversation.id,
+        user_message_content=user_message.message_content,
+        ai_model=user_message.ai_model,
     )
-
-    return AIMessageResponse(conversation_id=conversation_id, content=agent_response)
-
-
-"""
-GET Method : 'conversations/{conversation_id}/messages'
-Fetch all messages in a conversation.
-
-1. Method takes in conversation id, current user, and database_session
-"""
+    return AIMessageResponse(conversation_id=conversation.id, content=agent_response)
 
 
 @router.get(
-    path="/{conversation_id}/messages/",
+    path="/{conversation_id}/messages",
+    response_model=ConversationMessagesResponse,
     status_code=status.HTTP_200_OK,
     description="Load all messages for a given Conversation",
 )
-async def load_all_chat_messages(conversation: ValidatedConversation, db_session: DatabaseSession):
-    list_of_all_messages = await load_conversation_from_database(
-        conversation=conversation, db_session=db_session
-    )
+async def load_all_chat_messages(
+    conversation: ValidatedConversation,
+    service: ConversationSvc,
+) -> ConversationMessagesResponse:
+    list_of_all_messages = await service.load_messages(conversation=conversation)
     return ConversationMessagesResponse(
         conversation_id=conversation.id,
         messages=[ChatMessage.model_validate(m) for m in list_of_all_messages],

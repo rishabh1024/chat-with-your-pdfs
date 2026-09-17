@@ -1,95 +1,46 @@
 import logging
+from typing import Any
 from uuid import UUID
 
-from langchain.agents import create_agent
-from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_core.tools import tool
-from langchain_openrouter import ChatOpenRouter
-from langgraph.graph.state import RunnableConfig
-from pydantic import SecretStr
-from src.core.settings import load_environment_variables
-from src.mongo_vector_db.data_wrangler import DocumentIndexer
+from langgraph.graph.state import CompiledStateGraph, RunnableConfig
+from src.conversations.agent import RAGAgent
+from src.conversations.schemas import LLMConfiguration
 
-settings = load_environment_variables()
-OPENROUTER_API_KEY = settings.openrouter.openrouter_api_key.get_secret_value()
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT = (
-    "You are a helpful assistant. Answer the user's questions clearly and concisely. "
-    "If the question is about the Rishabh or you need more information to answer "
-    "your questions, use the search_documents tool to get information from relevant documents. "
-    "The user might sometimes ask you to refer to the documents again, follow his instructions"
-    "Otherwise answer directly. Do not fabricate information when asked about Rishabh."
-)
-
-
-@tool(
-    description="This tool searches for relevant documents from the"
-    "vector database using the provided search query"
-)
-def search_documents(search_query: str) -> str:
-    """Search the user's uploaded documents for information relevant to the query."""
-    logger.debug("conversation.chat.tool.search.started")
-
-    documents = DocumentIndexer.get_similar_documents_from_database(user_query=search_query)
-    if isinstance(documents, list):
-        return "\n\n---\n\n".join(document.page_content for document in documents)
-    return f"No relevant document's were found. {documents['message']}"
 
 
 class ChatService:
-    def __init__(
+    def __init__(self, rag_agent: RAGAgent) -> None:
+        self.rag_agent: CompiledStateGraph[Any, LLMConfiguration, Any, Any] = (
+            rag_agent.agent_graph
+        )
+
+    def send_message(
         self,
-        model_name="poolside/laguna-xs-2.1:free",
-        top_p: float = 0.9,
-        max_tokens: int = 10000,
-        frequency_penalty: float = 0.2,
-        seed: int | None = None,
-        temperature: float = 0.3,
-        checkpointer=None,
-    ) -> None:
-        self.openrouter_language_model = ChatOpenRouter(
-            model="qwen/qwen3-30b-a3b-instruct-2507",
-            api_key=SecretStr(OPENROUTER_API_KEY or ""),
-            temperature=temperature,
-            top_p=top_p,
-            frequency_penalty=frequency_penalty,
-            max_tokens=max_tokens,
-            seed=seed,
-            model_kwargs={
-                "models": [
-                    "qwen/qwen3-next-80b-a3b-instruct:free",
-                    "poolside/laguna-xs-2.1:free",
-                    "meta-llama/llama-3.2-3b-instruct:free",
-                ]
-            },
+        conversation_id: UUID,
+        user_message: str,
+        ai_model: LLMConfiguration | None = None,
+    ) -> tuple[str, list[str]]:
+        thread_configuration = RunnableConfig(
+            {"configurable": {"thread_id": str(conversation_id)}}
         )
-        self.rag_agent_with_tools = create_agent(
-            model=self.openrouter_language_model,
-            tools=[search_documents],
-            system_prompt=SYSTEM_PROMPT,
-            checkpointer=checkpointer,
-            middleware=[
-                ToolRetryMiddleware(backoff_factor=2.0, initial_delay=1.0),
-                ModelRetryMiddleware(backoff_factor=2.0, initial_delay=1.0),
-            ],
-            name="RAG Agent",
-        )
-
-        self.checkpointer = checkpointer
-
-    def send_message(self, chat_id: UUID, user_message: str) -> tuple[str, list[str]]:
-
-        thread_configuration = RunnableConfig({"configurable": {"thread_id": str(chat_id)}})
-        agent_response = self.rag_agent_with_tools.invoke(
+        agent_context = self.get_agent_context(ai_model)
+        agent_response = self.rag_agent.invoke(
             {"messages": [{"role": "user", "content": user_message}]},
             config=thread_configuration,
+            context=agent_context,
         )
         conversation_messages: list[BaseMessage] = agent_response["messages"]
         last_ai_message = self.get_last_ai_message_from_response(conversation_messages)
         user_visible_chat_history = self._format_user_visible_chat_history(conversation_messages)
         return last_ai_message, user_visible_chat_history
+
+    @staticmethod
+    def get_agent_context(ai_model: LLMConfiguration | None) -> LLMConfiguration | None:
+        if ai_model is None or ai_model == LLMConfiguration():
+            return None
+        return ai_model
 
     @staticmethod
     def get_last_ai_message_from_response(conversation_messages: list[BaseMessage]) -> str:

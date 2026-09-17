@@ -2,10 +2,13 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.dependencies import get_current_authenticated_user
 from src.auth.models import AuthenticatedUser
+from src.conversations.chat import ChatService
+from src.conversations.repository import ConversationRepository
+from src.conversations.service import ConversationService
 from src.database.configuration import get_database_session
 from src.database.models import Conversation
 
@@ -43,3 +46,14 @@ async def validate_conversationid_and_user_authorization(
         )
 
     return conversation
+
+
+def get_chat_service(request: Request) -> ChatService:
+    return request.app.state.chat_service
+
+
+def get_conversation_service(
+    db_session: Annotated[AsyncSession, Depends(get_database_session)],
+    chat_agent: Annotated[ChatService, Depends(get_chat_service)],
+) -> ConversationService:
+    return ConversationService(ConversationRepository(db_session), chat_agent)

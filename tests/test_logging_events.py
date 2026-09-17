@@ -29,7 +29,7 @@ def test_invalid_authentication_logs_reason_without_token(
     monkeypatch.setattr(
         token_validator,
         "get_jwks_client",
-        lambda: (InvalidJwksClient(), "https://example.supabase.co"),
+        lambda: InvalidJwksClient(),
     )
     caplog.set_level(logging.WARNING, logger=token_validator.__name__)
 
@@ -38,7 +38,7 @@ def test_invalid_authentication_logs_reason_without_token(
 
     messages = record_messages(caplog)
     assert any(
-        "auth.token.rejected reason=invalid error_type=InvalidTokenError" in message
+        "auth.token.rejected reason=invalid or malformed error_type=InvalidTokenError" in message
         for message in messages
     )
     assert all(token not in message for message in messages)
@@ -48,6 +48,8 @@ def test_conversation_mutation_failure_logs_safe_context(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     from src.conversations import service
+    from src.conversations.repository import ConversationRepository
+    from src.conversations.service import ConversationService
 
     user_id = uuid4()
 
@@ -61,10 +63,19 @@ def test_conversation_mutation_failure_logs_safe_context(
         async def rollback(self) -> None:
             return None
 
+    class FakeChatService:
+        def send_message(self, chat_id, user_message):
+            return "", []
+
+    conversation_service = ConversationService(
+        repository=ConversationRepository(FailingSession()),  # type: ignore[arg-type]
+        chat_agent=FakeChatService(),  # type: ignore[arg-type]
+    )
+
     caplog.set_level(logging.ERROR, logger=service.__name__)
 
     with pytest.raises(RuntimeError):
-        asyncio.run(service.create_a_new_conversation(FailingSession(), user_id, None))
+        asyncio.run(conversation_service.create_conversation(user_id, None))
 
     messages = record_messages(caplog)
     assert messages == [
@@ -137,17 +148,38 @@ def test_application_lifecycle_logs_completed_events(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app as app_module
+    from src import main as main_module
 
-    monkeypatch.setattr(app_module, "configure_logger", lambda settings: None)
-    monkeypatch.setattr(app_module, "initialize_app_checkpointer", lambda: None)
-    monkeypatch.setattr(app_module, "init_database", AsyncMock())
-    monkeypatch.setattr(app_module, "close_database", AsyncMock())
-    monkeypatch.setattr(app_module.FileUploadClient, "create", AsyncMock(return_value=object()))
-    caplog.set_level(logging.INFO, logger=app_module.__name__)
+    class FakeConnectionPool:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def open(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    class FakePostgresSaver:
+        def __init__(self, pool) -> None:
+            self.pool = pool
+
+        def setup(self) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "ConnectionPool", FakeConnectionPool)
+    monkeypatch.setattr(main_module, "PostgresSaver", FakePostgresSaver)
+    monkeypatch.setattr(main_module, "ChatService", lambda checkpointer=None: object())
+    monkeypatch.setattr(main_module, "configure_logger", lambda settings: None)
+    monkeypatch.setattr(main_module, "init_database", AsyncMock())
+    monkeypatch.setattr(main_module, "close_database", AsyncMock())
+    monkeypatch.setattr(main_module.FileUploadClient, "create", AsyncMock(return_value=object()))
+    caplog.set_level(logging.INFO, logger=main_module.__name__)
+
+    app = main_module.create_app()
 
     async def run_lifespan() -> None:
-        async with app_module.lifespan(app_module.app):
+        async with main_module.lifespan(app):
             pass
 
     asyncio.run(run_lifespan())
