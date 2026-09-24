@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
-from src.conversations.protocols import DocumentVectorStore
-from src.mongo_vector_db.data_wrangler import DocumentIndexer
+
+from conversations.protocols import DocumentVectorStore
+from mongo_vector_db.retriever import search_similar_documents
 
 
 def build_search_documents_tool(document_search_store: DocumentVectorStore):
@@ -14,9 +15,10 @@ def build_search_documents_tool(document_search_store: DocumentVectorStore):
 
     return search_documents
 
+
 class MongoDocumentSearch:
     def search(self, query: str) -> str:
-        documents = DocumentIndexer.get_similar_documents_from_database(user_query=query)
+        documents = search_similar_documents(user_query=query)
         if isinstance(documents, list):
             return "\n\n---\n\n".join(d.page_content for d in documents)
         return f"No relevant documents were found. {documents['message']}"

@@ -16,8 +16,8 @@ def test_invalid_authentication_logs_reason_without_token(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.auth import token_validator
-    from src.auth.exceptions import InvalidTokenError
+    from auth import token_validator
+    from auth.exceptions import InvalidTokenError
 
     token = "sensitive-token-value"
 
@@ -47,9 +47,9 @@ def test_invalid_authentication_logs_reason_without_token(
 def test_conversation_mutation_failure_logs_safe_context(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from src.conversations import service
-    from src.conversations.repository import ConversationRepository
-    from src.conversations.service import ConversationService
+    from conversations import service
+    from conversations.repository import ConversationRepository
+    from conversations.service import ConversationService
 
     user_id = uuid4()
 
@@ -78,16 +78,14 @@ def test_conversation_mutation_failure_logs_safe_context(
         asyncio.run(conversation_service.create_conversation(user_id, None))
 
     messages = record_messages(caplog)
-    assert messages == [
-        f"conversation.create.failed user_id={user_id} error_type=RuntimeError"
-    ]
+    assert messages == [f"conversation.create.failed user_id={user_id} error_type=RuntimeError"]
     assert "sensitive prompt" not in messages[0]
 
 
 def test_storage_outage_logs_no_external_exception_text(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from src.file_upload.file_upload_client import FileUploadClient
+    from file_upload.file_upload_client import FileUploadClient
 
     document_id = "document-123"
 
@@ -106,11 +104,11 @@ def test_storage_outage_logs_no_external_exception_text(
         storage = Storage()
 
     client = FileUploadClient(SupabaseClient())
-    caplog.set_level(logging.DEBUG, logger="src.file_upload.file_upload_client")
+    caplog.set_level(logging.DEBUG, logger="file_upload.file_upload_client")
 
     result = asyncio.run(
-        client.upload_to_file_storage(
-            uploaded_file_content_in_bytes=b"pdf",
+        client.upload(
+            file_contents=b"pdf",
             original_filename="private-filename.pdf",
             file_hash=document_id,
         )
@@ -119,8 +117,7 @@ def test_storage_outage_logs_no_external_exception_text(
     messages = record_messages(caplog)
     assert result.upload_status == "Failed"
     assert any(
-        message
-        == f"storage.upload.failed document_id={document_id} error_type=ConnectError"
+        message == f"storage.upload.failed document_id={document_id} error_type=ConnectError"
         for message in messages
     )
     assert all("storage-key-sensitive" not in message for message in messages)
@@ -128,12 +125,12 @@ def test_storage_outage_logs_no_external_exception_text(
 
 
 def test_indexing_timeout_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
-    from src.mongo_vector_db.indexing_tracker import IndexingStatusTracker
+    from mongo_vector_db.indexing_tracker import IndexingStatusTracker
 
     document_id = "document-timeout"
     tracker = IndexingStatusTracker()
     tracker.register(document_id)
-    caplog.set_level(logging.WARNING, logger="src.mongo_vector_db.indexing_tracker")
+    caplog.set_level(logging.WARNING, logger="mongo_vector_db.indexing_tracker")
 
     result = asyncio.run(tracker.wait_for_result(document_id, timeout=0))
 
@@ -148,7 +145,7 @@ def test_application_lifecycle_logs_completed_events(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src import main as main_module
+    import main as main_module
 
     class FakeConnectionPool:
         def __init__(self, *args, **kwargs) -> None:
@@ -169,7 +166,13 @@ def test_application_lifecycle_logs_completed_events(
 
     monkeypatch.setattr(main_module, "ConnectionPool", FakeConnectionPool)
     monkeypatch.setattr(main_module, "PostgresSaver", FakePostgresSaver)
-    monkeypatch.setattr(main_module, "ChatService", lambda checkpointer=None: object())
+    monkeypatch.setattr(main_module, "MongoDocumentSearch", lambda: object())
+    monkeypatch.setattr(
+        main_module,
+        "RAGAgent",
+        lambda **kwargs: object(),
+    )
+    monkeypatch.setattr(main_module, "ChatService", lambda rag_agent=None: object())
     monkeypatch.setattr(main_module, "configure_logger", lambda settings: None)
     monkeypatch.setattr(main_module, "init_database", AsyncMock())
     monkeypatch.setattr(main_module, "close_database", AsyncMock())

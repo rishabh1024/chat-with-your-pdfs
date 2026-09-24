@@ -9,11 +9,12 @@ from langchain_openrouter import ChatOpenRouter
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import SecretStr
-from src.conversations.prompts import AGENT_SYSTEM_PROMPT
-from src.conversations.protocols import DocumentVectorStore
-from src.conversations.schemas import LLMConfiguration
-from src.conversations.tools import MongoDocumentSearch, build_search_documents_tool
-from src.core.settings import load_environment_variables
+
+from conversations.prompts import AGENT_SYSTEM_PROMPT
+from conversations.protocols import DocumentVectorStore
+from conversations.schemas import LLMConfiguration
+from conversations.tools import build_search_documents_tool
+from core.settings import load_environment_variables
 
 settings = load_environment_variables()
 OPENROUTER_API_KEY = settings.openrouter.openrouter_api_key.get_secret_value()
@@ -32,7 +33,7 @@ def get_chat_openrouter_client(
     seed: int = _LLM_DEFAULT_CONFIG.seed,
 ) -> BaseChatModel:
     # Lazy import avoids circular dependency with middleware (ALLOWED_MODELS lives there).
-    from src.conversations.middleware import ALLOWED_MODELS
+    from conversations.middleware import ALLOWED_MODELS
 
     return ChatOpenRouter(
         model=model_name,
@@ -47,7 +48,7 @@ def get_chat_openrouter_client(
 
 
 # Imported after factory so middleware can import this module without a cycle.
-from src.conversations.middleware import DynamicModelMiddleware  # noqa: E402
+from conversations.middleware import DynamicModelMiddleware  # noqa: E402
 
 
 class RAGAgent:
@@ -55,11 +56,11 @@ class RAGAgent:
         self,
         model_configuration: LLMConfiguration,
         checkpointer: PostgresSaver,
-        mongo_db_document_search: DocumentVectorStore | None = None,
+        document_search: DocumentVectorStore,
     ) -> None:
         self.model_configuration = model_configuration
         self.checkpointer = checkpointer
-        self.mongo_db_document_search = mongo_db_document_search or MongoDocumentSearch()
+        self.document_search = document_search
         self._rag_agent_with_tools = self._create_rag_agent()
 
     def _create_rag_agent(
@@ -77,7 +78,7 @@ class RAGAgent:
         )
         return create_agent(
             model=default_model,
-            tools=[build_search_documents_tool(self.mongo_db_document_search)],
+            tools=[build_search_documents_tool(self.document_search)],
             system_prompt=AGENT_SYSTEM_PROMPT,
             checkpointer=self.checkpointer,
             context_schema=LLMConfiguration,

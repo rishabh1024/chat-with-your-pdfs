@@ -84,12 +84,8 @@ class CORSSettings(BaseSettings):
         alias="CORS_ALLOWED_ORIGINS",
     )
     allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
-    allow_methods: Annotated[list[str], NoDecode] = Field(
-        default=["*"], alias="CORS_ALLOW_METHODS"
-    )
-    allow_headers: Annotated[list[str], NoDecode] = Field(
-        default=["*"], alias="CORS_ALLOW_HEADERS"
-    )
+    allow_methods: Annotated[list[str], NoDecode] = Field(default=["*"], alias="CORS_ALLOW_METHODS")
+    allow_headers: Annotated[list[str], NoDecode] = Field(default=["*"], alias="CORS_ALLOW_HEADERS")
 
     @field_validator("allowed_origins", "allow_methods", "allow_headers", mode="before")
     @classmethod
@@ -98,7 +94,6 @@ class CORSSettings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
-
 
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(

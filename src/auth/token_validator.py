@@ -4,7 +4,8 @@ from functools import cache
 import jwt
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
-from src.core.settings import load_environment_variables
+
+from core.settings import load_environment_variables
 
 from .exceptions import AuthenticationProviderError, InvalidTokenError
 
@@ -12,8 +13,8 @@ settings = load_environment_variables()
 logger = logging.getLogger(__name__)
 
 
-
 supabase_auth_url = settings.supabase.auth_url.unicode_string().rstrip("/")
+
 
 @cache
 def get_jwks_client() -> PyJWKClient:
@@ -39,9 +40,7 @@ def validate_jw_token(token: str) -> dict:
             algorithms=["ES256", "RS256", "HS256"],
             audience="authenticated",
             issuer=token_issuer,
-            options={
-                'require': ["sub", "exp", "iat"]
-            }
+            options={"require": ["sub", "exp", "iat"]},
         )
     except PyJWKClientConnectionError as client_connection_error:
         logger.warning(
@@ -67,5 +66,4 @@ def validate_jw_token(token: str) -> dict:
             "auth.token.rejected reason=invalid or malformed error_type=%s",
             type(e).__name__,
         )
-        raise InvalidTokenError("Token validation failed."
-                                "The token is invalid or malformed.") from e
+        raise InvalidTokenError("Token validation failed.The token is invalid or malformed.") from e

@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,9 +8,10 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import Connection
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
-from src.conversations.agent import RAGAgent
-from src.conversations.chat import ChatService
-from src.conversations.exceptions import (
+
+from conversations.agent import RAGAgent
+from conversations.chat import ChatService
+from conversations.exceptions import (
     ConversationAccessDeniedError,
     ConversationNotFoundError,
     DatabaseUnavailableError,
@@ -17,22 +19,44 @@ from src.conversations.exceptions import (
     conversation_not_found_exception_handler,
     database_unavailable_error_handler,
 )
-from src.conversations.router import router as conversation_router
-from src.conversations.schemas import LLMConfiguration
-from src.core.exception import unexpected_error_handler
-from src.core.logs import configure_logger
-from src.core.settings import load_environment_variables
-from src.database.configuration import close_database, init_database
-from src.file_upload.file_upload_client import FileUploadClient
-from src.file_upload.router import router as upload_router
+from conversations.router import router as conversation_router
+from conversations.schemas import LLMConfiguration
+from conversations.tools import MongoDocumentSearch
+from core.exception import unexpected_error_handler
+from core.logs import configure_logger
+from core.settings import load_environment_variables
+from database.configuration import close_database, init_database
+from file_upload.exceptions import (
+    IndexingStatusUnavailableError,
+    StorageUnavailableError,
+    UnsupportedFileTypeError,
+    indexing_status_unavailable_error_handler,
+    storage_unavailable_error_handler,
+    unsupported_file_type_error_handler,
+)
+from file_upload.file_upload_client import FileUploadClient
+from file_upload.router import router as upload_router
 
 logger = logging.getLogger(__name__)
+
+def enable_langsmith_tracing(settings) -> None:
+    """Push validated Langsmith settings into the process environment
+    so the LangSmith/LangChain SDK (which reads os.environ directly)
+    picks them up."""
+    os.environ["LANGSMITH_TRACING"] = str(settings.tracing).lower()
+
+    if settings.api_key is not None:
+        os.environ["LANGSMITH_API_KEY"] = settings.api_key.get_secret_value()
+
+    if settings.project is not None:
+        os.environ["LANGSMITH_PROJECT"] = settings.project
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     environment_variables = load_environment_variables()
     configure_logger(environment_variables.logger)
+    enable_langsmith_tracing(environment_variables.langsmith)
     checkpointer_memory_pool: ConnectionPool[Connection[DictRow]] | None = None
     try:
         checkpointer_memory_pool = ConnectionPool(
@@ -46,9 +70,11 @@ async def lifespan(app: FastAPI):
         app.state.checkpointer = PostgresSaver(checkpointer_memory_pool)
         app.state.checkpointer.setup()
         app.state.model_configuration = LLMConfiguration()
+        app.state.document_search = MongoDocumentSearch()
         app.state.rag_agent = RAGAgent(
             model_configuration=app.state.model_configuration,
             checkpointer=app.state.checkpointer,
+            document_search=app.state.document_search,
         )
         app.state.chat_service = ChatService(rag_agent=app.state.rag_agent)
         app.state.file_upload_client = await FileUploadClient.create()
@@ -80,6 +106,18 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         DatabaseUnavailableError,
         database_unavailable_error_handler,
+    )
+    app.add_exception_handler(
+        StorageUnavailableError,
+        storage_unavailable_error_handler,
+    )
+    app.add_exception_handler(
+        IndexingStatusUnavailableError,
+        indexing_status_unavailable_error_handler,
+    )
+    app.add_exception_handler(
+        UnsupportedFileTypeError,
+        unsupported_file_type_error_handler,
     )
     app.add_exception_handler(Exception, unexpected_error_handler)
 

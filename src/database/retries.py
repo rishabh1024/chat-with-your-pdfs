@@ -10,13 +10,14 @@ from sqlalchemy.exc import (
     OperationalError,
     TimeoutError,
 )
-from src.core.logs import safe_before_sleep_log
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
 )
+
+from core.logs import safe_before_sleep_log
 
 P = ParamSpec("P")
 T = TypeVar("T")

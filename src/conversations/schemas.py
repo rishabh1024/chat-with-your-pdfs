@@ -51,7 +51,7 @@ class ConversationMessagesResponse(BaseModel):
 
 
 class LLMConfiguration(BaseModel):
-    model_name: str = "poolside/laguna-xs-2.1:free"
+    model_name: str = "qwen/qwen3.8-27b:free"
     temperature: float = Field(
         default=0.3, ge=0.0, lt=2.0, description="Value has to be between 0.0 and 2.0"
     )

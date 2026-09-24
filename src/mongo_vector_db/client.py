@@ -1,21 +1,38 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
+import certifi
 from pymongo import MongoClient
 from pymongo.database import Database
 from pymongo.operations import SearchIndexModel
 from pymongo.server_api import ServerApi
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from core.settings import load_environment_variables
+
 logger = logging.getLogger(__name__)
+
+settings = load_environment_variables()
+
+_mongo_vector_db: MongoVectorDB | None = None
+
+
+def get_mongodb_uri() -> str:
+    username = quote_plus(settings.mongo.user.get_secret_value())
+    password = quote_plus(settings.mongo.password.get_secret_value())
+    cluster_id = settings.mongo.cluster_id
+    return f"mongodb+srv://{username}:{password}@cluster0.jsbdmm9.mongodb.net/?appName={cluster_id}"
 
 
 class MongoVectorDB:
     def __init__(self, uri: str, db_name: str, collection_name: str = "pdf_embeddings"):
-        self.client: MongoClient = MongoClient(uri, server_api=ServerApi("1"))
+        self.client: MongoClient = MongoClient(
+            uri,
+            server_api=ServerApi("1"),
+            tlsCAFile=certifi.where(),
+        )
         self.db: Database = self.client[db_name]
         self.collection_name: str = collection_name
 
@@ -24,7 +41,7 @@ class MongoVectorDB:
         return self.db[self.collection_name]
 
     def test_database_connection(self):
-        self.client.admin.command("ping")
+        self.client["admin"].command("ping")
         logger.info("vector.database.connection.completed")
 
     def get_all_documents_from_collection(self, collection_name: str):
@@ -40,7 +57,7 @@ class MongoVectorDB:
                 "fields": [
                     {
                         "type": "vector",
-                        "path": "mebedding",
+                        "path": "embedding",
                         "numDimensions": 1536,
                         "similarity": "cosine",
                     }
@@ -59,32 +76,11 @@ class MongoVectorDB:
         return self.db[collection_name].aggregate
 
 
-# if __name__ == "__main__":
-
-#     load_dotenv(PROJECT_ROOT / ".env", override=True)
-
-#     username = os.environ.get("MONGODB_USER")
-#     password = os.environ.get("password")
-#     cluster_id = os.environ.get("cluster_id")
-
-
-#     MONGO_URI = f'mongodb+srv://{username}:{password}@cluster0.jsbdmm9.mongodb.net/?appName={cluster_id}'
-#     db_name = os.environ.get("MONGO_DB", "sample_mflix")
-#     if not MONGO_URI:
-#         raise SystemExit("Missing MONGO_URI in .env or environment.")
-
-#     # MongoVectorDB(uri=MONGO_URI, db_name=db_name).test_connection()
-#     mongodb_instance = MongoVectorDB(uri=MONGO_URI, db_name=db_name)
-#     # all_data = mongodb_instance
-#     # for doc in all_data:
-#     #     print(doc)
-#     # try:
-#     #   mongodb_instance.create_search_index(
-#     #       collection_name="movies", index_name="movie_plot_embedding_index"
-#     #   )
-#     # except Exception as e:
-#     #   raise e
-#     all_search_indexes = mongodb_instance.get_all_search_indexes_from_collection(
-#         collection_name="movies"
-#     )
-#     print(all_search_indexes)
+def get_mongo_vector_db() -> MongoVectorDB:
+    global _mongo_vector_db
+    if _mongo_vector_db is None:
+        _mongo_vector_db = MongoVectorDB(
+            uri=get_mongodb_uri(),
+            db_name=settings.mongo.db_name,
+        )
+    return _mongo_vector_db
