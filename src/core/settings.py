@@ -95,7 +95,6 @@ class CORSSettings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",

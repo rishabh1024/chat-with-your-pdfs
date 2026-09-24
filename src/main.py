@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -38,11 +39,24 @@ from file_upload.router import router as upload_router
 
 logger = logging.getLogger(__name__)
 
+def enable_langsmith_tracing(settings) -> None:
+    """Push validated Langsmith settings into the process environment
+    so the LangSmith/LangChain SDK (which reads os.environ directly)
+    picks them up."""
+    os.environ["LANGSMITH_TRACING"] = str(settings.tracing).lower()
+
+    if settings.api_key is not None:
+        os.environ["LANGSMITH_API_KEY"] = settings.api_key.get_secret_value()
+
+    if settings.project is not None:
+        os.environ["LANGSMITH_PROJECT"] = settings.project
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     environment_variables = load_environment_variables()
     configure_logger(environment_variables.logger)
+    enable_langsmith_tracing(environment_variables.langsmith)
     checkpointer_memory_pool: ConnectionPool[Connection[DictRow]] | None = None
     try:
         checkpointer_memory_pool = ConnectionPool(
