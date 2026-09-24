@@ -2,12 +2,13 @@ from collections.abc import Callable
 from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, ModelResponse
-from src.conversations.schemas import LLMConfiguration
+
+from conversations.schemas import LLMConfiguration
 
 ALLOWED_MODELS = {
-    "qwen/qwen3-next-80b-a3b-instruct:free",
     "poolside/laguna-xs-2.1:free",
-    "meta-llama/llama-3.2-3b-instruct:free",
+    "qwen/qwen3.5-flash-02-23",
+    "qwen/qwen3.8-27b:free",
 }
 
 
@@ -17,7 +18,7 @@ class DynamicModelMiddleware(AgentMiddleware[Any, LLMConfiguration]):
         request: ModelRequest[LLMConfiguration],
         handler: Callable[[ModelRequest[LLMConfiguration]], ModelResponse],
     ) -> ModelResponse:
-        from src.conversations.agent import get_chat_openrouter_client
+        from conversations.agent import get_chat_openrouter_client
 
         ctx = request.runtime.context
         if ctx is None or ctx.model_name not in ALLOWED_MODELS:

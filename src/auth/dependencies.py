@@ -3,12 +3,14 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from src.auth.models import AuthenticatedUser
+
+from auth.models import AuthenticatedUser
 
 from .exceptions import AuthenticationProviderError, InvalidTokenError
 from .token_validator import validate_jw_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
 
 async def get_current_authenticated_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
@@ -41,16 +43,11 @@ async def get_current_authenticated_user(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
-                "message": (
-                    "The authentication provider is unavailable. "
-                    "Please try again shortly."
-                )
+                "message": ("The authentication provider is unavailable. Please try again shortly.")
             },
         ) from authentication_error
     except InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "message": "User could not be authenticated. Token is invalid or expired."
-            },
+            detail={"message": "User could not be authenticated. Token is invalid or expired."},
         ) from e

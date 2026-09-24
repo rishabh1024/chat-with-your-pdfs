@@ -1,20 +1,23 @@
-import hashlib
 import logging
 from typing import cast
 
 import httpx
-from src.core.settings import load_environment_variables
-from src.file_upload.models import StorageUploadResponse
 from storage3.exceptions import StorageApiError
 from storage3.types import FileOptions
 from supabase import SupabaseException
 from supabase.client import AsyncClient, create_async_client
 
+from core.settings import load_environment_variables
+from file_upload.models import StorageUploadResponse
+from file_upload.protocols import StorageClient
+
 settings = load_environment_variables()
 logger = logging.getLogger(__name__)
 
 
-class FileUploadClient:
+class FileUploadClient(StorageClient):
+    """Supabase Storage adapter that satisfies StorageClient."""
+
     def __init__(self, supabase_client: AsyncClient) -> None:
         self.supabase_client = supabase_client
         self.bucket_name = "pdf-file-storage"
@@ -78,40 +81,53 @@ class FileUploadClient:
 
     def is_file_valid(self, file_name: str) -> bool: ...
 
-    @staticmethod
-    def calculate_file_hash(file_content: bytes) -> str:
-        """Return the SHA-256 digest used as the document's stable ID."""
-        return hashlib.sha256(file_content).hexdigest()
+    async def file_exists(self, storage_path: str) -> bool:
+        bucket_storage_client = self.supabase_client.storage.from_(self.bucket_name)
+        try:
+            return await bucket_storage_client.exists(storage_path)
+        except StorageApiError:
+            return False
 
-    # Check the file's mime type and throw an error for invalid file type
-    async def upload_to_file_storage(
-        self, uploaded_file_content_in_bytes: bytes, original_filename: str, file_hash: str
+    async def upload(
+        self,
+        file_contents: bytes,
+        original_filename: str,
+        file_hash: str,
     ) -> StorageUploadResponse:
-
-        storage_path = f"{self.bucket_name}/pdf-files/{file_hash}.pdf"
+        # Path is relative to the bucket selected via from_(bucket_name).
+        storage_path = f"pdf-files/{file_hash}.pdf"
 
         bucket_storage_client = self.supabase_client.storage.from_(self.bucket_name)
 
-        # Skip upload when the hash-based object already exists; upsert handles races.
         try:
-            logger.debug("storage.upload.dispatch document_id=%s", file_hash)
-            if not await bucket_storage_client.exists(storage_path):
+            logger.debug(
+                "storage.upload.dispatch document_id=%s storage_path=%s",
+                file_hash,
+                storage_path,
+            )
+            if not await self.file_exists(storage_path):
                 await bucket_storage_client.upload(
                     path=storage_path,
-                    file=uploaded_file_content_in_bytes,
+                    file=file_contents,
                     file_options=cast(
                         FileOptions,
                         {
                             "content-type": "application/pdf",
-                            "upsert": "True",
+                            "upsert": "true",
                             "metadata": {"file_hash": file_hash},
                         },
                     ),
                 )
+                logger.info(
+                    "storage.upload.completed document_id=%s storage_path=%s",
+                    file_hash,
+                    storage_path,
+                )
             else:
                 logger.debug(
-                    "storage.upload.skipped document_id=%s reason=already_exists",
+                    "storage.upload.skipped document_id=%s reason=already_exists storage_path=%s",
                     file_hash,
+                    storage_path,
                 )
                 return StorageUploadResponse(
                     document_id=file_hash,

@@ -1,14 +1,15 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from src.auth.dependencies import get_current_authenticated_user
-from src.auth.models import AuthenticatedUser
-from src.conversations.dependencies import (
+
+from auth.dependencies import get_current_authenticated_user
+from auth.models import AuthenticatedUser
+from conversations.dependencies import (
     get_conversation_service,
     validate_conversationid_and_user_authorization,
 )
-from src.conversations.service import ConversationService
-from src.database.models import Conversation
+from conversations.service import ConversationService
+from database.models import Conversation
 
 from .schemas import (
     AIMessageResponse,
@@ -50,9 +51,7 @@ async def list_all_conversations_for_the_user(
     current_user: User,
     service: ConversationSvc,
 ) -> ConversationListResponse:
-    total_threads, list_of_threads = await service.list_conversations(
-        user_id=current_user.user_id
-    )
+    total_threads, list_of_threads = await service.list_conversations(user_id=current_user.user_id)
     return ConversationListResponse(
         count_conversations=total_threads,
         conversations=[ConversationResponse.model_validate(thread) for thread in list_of_threads],

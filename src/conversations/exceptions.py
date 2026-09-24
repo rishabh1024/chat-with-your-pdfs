@@ -26,7 +26,6 @@ class DatabaseUnavailableError(Exception):
         super().__init__(self.error)
 
 
-
 async def conversation_not_found_exception_handler(request, exc) -> JSONResponse:
     return JSONResponse(
         status_code=404,
@@ -36,7 +35,8 @@ async def conversation_not_found_exception_handler(request, exc) -> JSONResponse
         },
     )
 
-async def conversation_access_denied_error_handler(request, exc)  -> JSONResponse:
+
+async def conversation_access_denied_error_handler(request, exc) -> JSONResponse:
 
     return JSONResponse(
         status_code=status.HTTP_403_FORBIDDEN,

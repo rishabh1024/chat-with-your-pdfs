@@ -4,13 +4,14 @@ from uuid import UUID
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.auth.dependencies import get_current_authenticated_user
-from src.auth.models import AuthenticatedUser
-from src.conversations.chat import ChatService
-from src.conversations.repository import ConversationRepository
-from src.conversations.service import ConversationService
-from src.database.configuration import get_database_session
-from src.database.models import Conversation
+
+from auth.dependencies import get_current_authenticated_user
+from auth.models import AuthenticatedUser
+from conversations.chat import ChatService
+from conversations.repository import ConversationRepository
+from conversations.service import ConversationService
+from database.configuration import get_database_session
+from database.models import Conversation
 
 from .exceptions import ConversationAccessDeniedError, ConversationNotFoundError
 

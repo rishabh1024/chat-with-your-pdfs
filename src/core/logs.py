@@ -6,8 +6,9 @@ from collections.abc import Callable
 from pathlib import Path
 from threading import Lock
 
-from src.core.settings import LoggingSettings
 from tenacity import RetryCallState
+
+from core.settings import LoggingSettings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOG_CONFIGURATION_PATH = PROJECT_ROOT / "log_config.json"

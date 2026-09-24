@@ -1,7 +1,7 @@
 from typing import Protocol
 from uuid import UUID
 
-from src.conversations.schemas import LLMConfiguration
+from conversations.schemas import LLMConfiguration
 
 
 class DocumentVectorStore(Protocol):

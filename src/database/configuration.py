@@ -4,14 +4,14 @@ from functools import cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from langgraph.checkpoint.postgres import PostgresSaver
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from src.core.settings import load_environment_variables
+
+from core.settings import load_environment_variables
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -52,7 +52,7 @@ async def init_database() -> None:
             get_db_connection_string(),
             pool_size=settings.database.pool_size,
             max_overflow=settings.database.max_overflow,
-            pool_pre_ping=True,  # Verify connections before use
+            pool_pre_ping=True,
         )
         _session_factory = async_sessionmaker(
             _engine,
@@ -106,38 +106,3 @@ async def get_database_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
-
-
-def initialize_app_checkpointer() -> None:
-    """Create LangGraph checkpoint tables."""
-
-    try:
-        postgres_connection_string: str = get_db_connection_string("sync")
-        with PostgresSaver.from_conn_string(conn_string=postgres_connection_string) as checkpointer:
-            checkpointer.setup()
-    except Exception as error:
-        logger.error(
-            "database.checkpointer.initialize.failed error_type=%s",
-            type(error).__name__,
-        )
-        raise
-
-    logger.info("database.checkpointer.initialize.completed")
-
-
-# async def create():
-#     return await get_supabase_client()
-
-
-# @staticmethod
-# async def get_supabase_client() -> AsyncClient:
-#     supabase_url = os.environ.get("SUPABASE_URL")
-#     supabase_key = os.environ.get("SUPABASE_KEY")
-#     if not supabase_url:
-#         raise ValueError("SUPABASE_URL must be set")
-#     if not supabase_key:
-#         raise ValueError("SUPABASE_URL  SUPABASE_KEY must be set")
-#     try:
-#         return await create_async_client(supabase_url, supabase_key)
-#     except AsyncSupabaseException as e:
-#         raise AsyncSupabaseException("Exception raised by Supabase client.") from e

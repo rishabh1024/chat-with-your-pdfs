@@ -4,17 +4,16 @@ from uuid import UUID
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph, RunnableConfig
-from src.conversations.agent import RAGAgent
-from src.conversations.schemas import LLMConfiguration
+
+from conversations.agent import RAGAgent
+from conversations.schemas import LLMConfiguration
 
 logger = logging.getLogger(__name__)
 
 
 class ChatService:
     def __init__(self, rag_agent: RAGAgent) -> None:
-        self.rag_agent: CompiledStateGraph[Any, LLMConfiguration, Any, Any] = (
-            rag_agent.agent_graph
-        )
+        self.rag_agent: CompiledStateGraph[Any, LLMConfiguration, Any, Any] = rag_agent.agent_graph
 
     def send_message(
         self,
@@ -22,9 +21,7 @@ class ChatService:
         user_message: str,
         ai_model: LLMConfiguration | None = None,
     ) -> tuple[str, list[str]]:
-        thread_configuration = RunnableConfig(
-            {"configurable": {"thread_id": str(conversation_id)}}
-        )
+        thread_configuration = RunnableConfig({"configurable": {"thread_id": str(conversation_id)}})
         agent_context = self.get_agent_context(ai_model)
         agent_response = self.rag_agent.invoke(
             {"messages": [{"role": "user", "content": user_message}]},

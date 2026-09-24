@@ -4,8 +4,9 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.database.models import Conversation, Message
-from src.database.retries import retry_on_transient_db_error
+
+from database.models import Conversation, Message
+from database.retries import retry_on_transient_db_error
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +15,8 @@ DEFAULT_MESSAGE_LIMIT = 20
 
 
 class ConversationRepository:
-
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
-
 
     @retry_on_transient_db_error(logger, "conversation.create.retry")
     async def create(
@@ -37,7 +36,6 @@ class ConversationRepository:
         except Exception:
             await self._session.rollback()
             raise
-
 
     @retry_on_transient_db_error(logger, "conversation.list.retry")
     async def get_all_conversations_for_user(
@@ -61,7 +59,6 @@ class ConversationRepository:
             await self._session.rollback()
             raise
 
-
     @retry_on_transient_db_error(logger, "conversation.delete.retry")
     async def delete(
         self,
@@ -75,9 +72,7 @@ class ConversationRepository:
             raise
 
     @retry_on_transient_db_error(logger, "conversation.add.message.retry")
-    async def add_message(
-        self, role: str, message_content: str, conversation_id: UUID
-    ) -> None:
+    async def add_message(self, role: str, message_content: str, conversation_id: UUID) -> None:
 
         message = Message(conversation_id=conversation_id, role=role, content=message_content)
         try:
@@ -87,11 +82,9 @@ class ConversationRepository:
             await self._session.rollback()
             raise
 
-
     @retry_on_transient_db_error(logger, "conversation.load.retry")
-    async def load_conversation(self,
-        conversation: Conversation,
-        limit: int = DEFAULT_MESSAGE_LIMIT
+    async def load_conversation(
+        self, conversation: Conversation, limit: int = DEFAULT_MESSAGE_LIMIT
     ) -> list[Message]:
         try:
             result = await self._session.execute(

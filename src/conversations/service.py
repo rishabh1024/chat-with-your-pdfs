@@ -5,7 +5,8 @@ from uuid import UUID
 
 from psycopg import Error as PsycopgError
 from sqlalchemy.exc import SQLAlchemyError
-from src.database.models import Conversation, Message
+
+from database.models import Conversation, Message
 
 from .chat import ChatService
 from .exceptions import DatabaseUnavailableError

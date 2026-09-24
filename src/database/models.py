@@ -6,7 +6,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-  pass
+    pass
+
 
 users_auth_table = Table(
     "users",
@@ -14,6 +15,7 @@ users_auth_table = Table(
     Column("id", Uuid, primary_key=True),
     schema="auth",
 )
+
 
 class Conversation(Base):
     __tablename__ = "connversations"
@@ -27,6 +29,7 @@ class Conversation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
 
 class Message(Base):
     __tablename__ = "messages"
