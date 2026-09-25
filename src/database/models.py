@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Table, Uuid, func
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Table, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -44,3 +44,26 @@ class Message(Base):
     )
     content: Mapped[str] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Document(Base):
+    """Per-user uploaded document.
+
+    `document_id` is the SHA-256 of the file bytes — used as the public ID, for
+    per-user dedup (unique with user_id), and as an integrity checksum.
+    """
+
+    __tablename__ = "documents"
+    __table_args__ = (UniqueConstraint("user_id", "document_id", name="uq_user_document"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("auth.users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_id: Mapped[str] = mapped_column(nullable=False, index=True)
+    original_filename: Mapped[str | None] = mapped_column(nullable=True)
+    storage_path: Mapped[str] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
