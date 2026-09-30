@@ -4,6 +4,7 @@ from uuid import UUID
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph, RunnableConfig
+from sqlalchemy.sql.functions import mode
 
 from conversations.agent import RAGAgent
 from conversations.schemas import LLMConfiguration
@@ -14,6 +15,15 @@ logger = logging.getLogger(__name__)
 class ChatService:
     def __init__(self, rag_agent: RAGAgent) -> None:
         self.rag_agent: CompiledStateGraph[Any, LLMConfiguration, Any, Any] = rag_agent.agent_graph
+
+    def strip_thinking(self, model_response: str) -> str:
+        if '</think>' in model_response:
+            return model_response.split('</think>')[-1].strip()
+        return model_response.strip()
+
+    def format_model_response(self, model_response: str) -> str:
+        model_response = self.strip_thinking(model_response)
+        return model_response
 
     def send_message(
         self,
@@ -28,8 +38,10 @@ class ChatService:
             config=thread_configuration,
             context=agent_context,
         )
+
         conversation_messages: list[BaseMessage] = agent_response["messages"]
-        last_ai_message = self.get_last_ai_message_from_response(conversation_messages)
+        last_ai_message = self.get_response_from_model(conversation_messages)
+        last_ai_message = self.format_model_response(last_ai_message)
         user_visible_chat_history = self._format_user_visible_chat_history(conversation_messages)
         return last_ai_message, user_visible_chat_history
 
@@ -40,7 +52,7 @@ class ChatService:
         return ai_model
 
     @staticmethod
-    def get_last_ai_message_from_response(conversation_messages: list[BaseMessage]) -> str:
+    def get_response_from_model(conversation_messages: list[BaseMessage]) -> str:
         ai_messages = [
             message for message in conversation_messages if isinstance(message, AIMessage)
         ]
