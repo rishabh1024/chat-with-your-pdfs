@@ -44,6 +44,7 @@ def get_chat_openrouter_client(
         max_tokens=max_tokens,
         seed=seed,
         model_kwargs={"models": list(ALLOWED_MODELS)},
+        reasoning={"exclude": True},
     )
 
 

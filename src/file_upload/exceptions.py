@@ -53,6 +53,14 @@ class IndexingStatusUnavailableError(Exception):
         )
 
 
+class DocumentRegistryUnavailableError(Exception):
+    """Raised when per-user document ownership records cannot be read or written."""
+
+    def __init__(self, error_msg: str = "Document data is temporarily unavailable.") -> None:
+        self.error = error_msg
+        super().__init__(self.error)
+
+
 class UnsupportedFileTypeError(Exception):
     """Raised when the uploaded file type is not accepted."""
 
@@ -126,6 +134,19 @@ async def indexing_status_unavailable_error_handler(
             "reason_code": exc.reason_code,
             "storage_completed": exc.storage_completed,
             "index_failure_state": exc.index_failure_state,
+        },
+    )
+
+
+async def document_registry_unavailable_error_handler(
+    request,
+    exc: DocumentRegistryUnavailableError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "error": "Document Registry Unavailable",
+            "detail": exc.error,
         },
     )
 
