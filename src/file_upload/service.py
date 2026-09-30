@@ -12,20 +12,15 @@ from supabase import SupabaseException
 
 from auth.models import AuthenticatedUser
 from core.settings import load_environment_variables
-from file_upload.exceptions import (
-    DocumentRegistryUnavailableError,
-    IndexingStatusUnavailableError,
-    StorageUnavailableError,
-)
+from file_upload.exceptions import IndexingStatusUnavailableError, StorageUnavailableError
 from file_upload.helpers import calculate_file_hash, validate_uploaded_file
-from file_upload.models import FileUploadResponse, StorageUploadResponse, UsersDocuments
+from file_upload.models import FileUploadResponse, StorageUploadResponse
 from file_upload.protocols import StorageClient
 from mongo_vector_db.document_indexing import (
     DocumentIndexer,
     get_document_index_status,
     set_document_index_status,
 )
-from mongo_vector_db.document_registry import get_documents_for_user, insert_document_upload_record
 from mongo_vector_db.indexing_tracker import IndexingStatusTracker
 
 settings = load_environment_variables()
@@ -149,27 +144,6 @@ class FileUploadService:
 
         storage_completed = storage_response.upload_status in ("Success", "Already Exists")
 
-        if storage_completed:
-            try:
-                insert_document_upload_record(
-                    user_id=current_user.user_id,
-                    document_id=document_id,
-                    original_filename=storage_response.original_filename,
-                    storage_path=storage_response.storage_path,
-                )
-            except PyMongoError as error:
-                Path(temp_file_path).unlink(missing_ok=True)
-                logger.error(
-                    "upload.document.record.failed document_id=%s user_id=%s error_type=%s",
-                    document_id,
-                    current_user.user_id,
-                    type(error).__name__,
-                )
-                raise DocumentRegistryUnavailableError(
-                    "Your file was stored successfully, but it could not be recorded "
-                    "against your account. Please try again shortly."
-                ) from error
-
         try:
             document_indexing_status = get_document_index_status(document_id=document_id)
         except PyMongoError as error:
@@ -286,26 +260,6 @@ class FileUploadService:
             upload_error=storage_response.upload_error,
             document_indexing_status=indexing_status,
         )
-
-    async def list_documents(self, current_user: AuthenticatedUser) -> list[UsersDocuments]:
-        try:
-            documents = get_documents_for_user(current_user.user_id)
-        except PyMongoError as error:
-            logger.error(
-                "upload.documents.list.failed user_id=%s error_type=%s",
-                current_user.user_id,
-                type(error).__name__,
-            )
-            raise DocumentRegistryUnavailableError() from error
-
-        return [
-            UsersDocuments(
-                document_id=document["document_id"],
-                document_name=document.get("original_filename") or document["document_id"],
-                created_at=document["created_at"],
-            )
-            for document in documents
-        ]
 
 
 async def run_document_indexing_task(

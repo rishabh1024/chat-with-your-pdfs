@@ -49,6 +49,5 @@ async def get_current_authenticated_user(
     except InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"message": "User could not be authenticated. Token is invalid or expired.",
-                    "error": e},
+            detail={"message": "User could not be authenticated. Token is invalid or expired."},
         ) from e

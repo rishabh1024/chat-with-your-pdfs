@@ -41,7 +41,6 @@ def validate_jw_token(token: str) -> dict:
             audience="authenticated",
             issuer=token_issuer,
             options={"require": ["sub", "exp", "iat"]},
-            leeway=10
         )
     except PyJWKClientConnectionError as client_connection_error:
         logger.warning(

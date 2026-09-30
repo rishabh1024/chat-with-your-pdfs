@@ -27,11 +27,9 @@ from core.logs import configure_logger
 from core.settings import load_environment_variables
 from database.configuration import close_database, init_database
 from file_upload.exceptions import (
-    DocumentRegistryUnavailableError,
     IndexingStatusUnavailableError,
     StorageUnavailableError,
     UnsupportedFileTypeError,
-    document_registry_unavailable_error_handler,
     indexing_status_unavailable_error_handler,
     storage_unavailable_error_handler,
     unsupported_file_type_error_handler,
@@ -116,10 +114,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         IndexingStatusUnavailableError,
         indexing_status_unavailable_error_handler,
-    )
-    app.add_exception_handler(
-        DocumentRegistryUnavailableError,
-        document_registry_unavailable_error_handler,
     )
     app.add_exception_handler(
         UnsupportedFileTypeError,

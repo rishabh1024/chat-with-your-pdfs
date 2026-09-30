@@ -9,7 +9,7 @@ from starlette.formparsers import MultiPartParser
 from auth.dependencies import get_current_authenticated_user
 from auth.models import AuthenticatedUser
 from file_upload.dependencies import get_file_upload_service, get_indexing_status_tracker
-from file_upload.models import FileUploadResponse, UsersDocuments
+from file_upload.models import FileUploadResponse
 from file_upload.service import FileUploadService
 from mongo_vector_db.indexing_tracker import IndexingStatusTracker
 
@@ -39,14 +39,6 @@ async def upload_file(
         current_user=current_user,
         background_tasks=background_tasks,
     )
-
-
-@router.get("/documents", response_model=list[UsersDocuments])
-async def list_uploaded_documents(
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_authenticated_user)],
-    service: FileUploadSvc,
-) -> list[UsersDocuments]:
-    return await service.list_documents(current_user)
 
 
 @router.get("/index_status/{document_id}/events")
