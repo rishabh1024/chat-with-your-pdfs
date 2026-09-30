@@ -1,6 +1,6 @@
 # Chat With PDFs - FastAPI Backend
 
-A FastAPI backend for **document-grounded AI chat**. Upload PDFs, index them into **MongoDB Atlas Vector Search**, and talk to a **LangGraph RAG agent** that retrieves relevant chunks to answer questions — with auth, conversation history, and real-time indexing status.
+A FastAPI backend for **document intelligence application**. Upload PDFs, index them into **MongoDB Atlas Vector Search**, and talk to a **LangGraph RAG agent** that retrieves relevant chunks to answer questions — with auth, conversation history, and real-time indexing status.
 
 ---
 
