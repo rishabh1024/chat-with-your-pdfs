@@ -93,9 +93,11 @@ class FileUploadClient(StorageClient):
         file_contents: bytes,
         original_filename: str,
         file_hash: str,
+        user_id: str,
     ) -> StorageUploadResponse:
         # Path is relative to the bucket selected via from_(bucket_name).
-        storage_path = f"pdf-files/{file_hash}.pdf"
+        # Each user gets an isolated folder; dedup only applies within a user's folder.
+        storage_path = f"users/{user_id}/documents/{file_hash}.pdf"
 
         bucket_storage_client = self.supabase_client.storage.from_(self.bucket_name)
 

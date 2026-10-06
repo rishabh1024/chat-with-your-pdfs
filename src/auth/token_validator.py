@@ -3,7 +3,7 @@ from functools import cache
 
 import jwt
 from jwt import PyJWKClient
-from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
+from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError, ExpiredSignatureError
 
 from core.settings import load_environment_variables
 
@@ -59,7 +59,7 @@ def validate_jw_token(token: str) -> dict:
         raise AuthenticationProviderError(
             "Authentication provider is unavailable. Token validation failed."
         ) from jwk_client_error
-    except jwt.ExpiredSignatureError as err:
+    except ExpiredSignatureError as err:
         logger.debug("auth.token.rejected reason=expired")
         raise InvalidTokenError("Token has expired. User should reauthenticate.") from err
     except jwt.InvalidTokenError as e:

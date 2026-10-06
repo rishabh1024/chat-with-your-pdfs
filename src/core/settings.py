@@ -16,7 +16,7 @@ class MongoDBSettings(BaseSettings):
     user: SecretStr = Field(alias="MONGODB_USER")
     password: SecretStr = Field(alias="MONGODB_PASSWORD")
     cluster_id: str = Field(alias="MONGODB_CLUSTER_ID")
-    db_name: str = Field(default="sample_mflix", alias="MONGO_DB_NAME")
+    db_name: str = Field(default="chat_with_your_pdfs", alias="MONGO_DB_NAME")
 
 
 class SupabaseSettings(BaseSettings):

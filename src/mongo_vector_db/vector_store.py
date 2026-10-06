@@ -17,8 +17,8 @@ settings = load_environment_variables()
 
 OPENROUTER_API_KEY = settings.openrouter.openrouter_api_key.get_secret_value()
 
-VECTOR_NAMESPACE = "sample_mflix.pdf_embeddings"
-VECTOR_INDEX_NAME = "document_embeddings"
+VECTOR_NAMESPACE = "chat_with_your_pdfs.pdf_embeddings"
+VECTOR_INDEX_NAME = "user_documents_vector_index"
 EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
 
 _vector_store: MongoDBAtlasVectorSearch | None = None

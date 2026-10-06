@@ -116,6 +116,7 @@ class ConversationService:
         self,
         conversation_id: UUID,
         user_message_content: str,
+        user_id: UUID,
         ai_model: LLMConfiguration | None = None,
     ) -> str:
         started_at = perf_counter()
@@ -129,6 +130,7 @@ class ConversationService:
             ai_message_response, _ = self._chat_agent.send_message(
                 conversation_id=conversation_id,
                 user_message=user_message_content,
+                user_id=str(user_id),
                 ai_model=ai_model,
             )
             await self._repository.add_message(

@@ -58,9 +58,10 @@ class MongoVectorDB:
                     {
                         "type": "vector",
                         "path": "embedding",
-                        "numDimensions": 1536,
+                        "numDimensions": 4096,
                         "similarity": "cosine",
-                    }
+                    },
+                    {"type": "filter", "path": "user_id"},
                 ]
             },
             name=index_name,

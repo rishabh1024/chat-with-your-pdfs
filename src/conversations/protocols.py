@@ -5,7 +5,7 @@ from conversations.schemas import LLMConfiguration
 
 
 class DocumentVectorStore(Protocol):
-    def search(self, query: str) -> str: ...
+    def search(self, query: str, user_id: str) -> str: ...
 
 
 class ChatAgent(Protocol):
@@ -13,5 +13,6 @@ class ChatAgent(Protocol):
         self,
         conversation_id: UUID,
         user_message: str,
+        user_id: str,
         ai_model: LLMConfiguration | None = None,
     ) -> tuple[str, list[str]]: ...

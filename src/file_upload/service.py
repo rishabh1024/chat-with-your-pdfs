@@ -71,11 +71,14 @@ class FileUploadService:
             temperature=temperature,
         ).with_structured_output(DOCUMENT_METADATA_SCHEMA, method="json_schema")
 
-    def _create_document_indexer(self, temp_file_path: str, document_id: str) -> DocumentIndexer:
+    def _create_document_indexer(
+        self, temp_file_path: str, document_id: str, user_id: str
+    ) -> DocumentIndexer:
         return DocumentIndexer(
             structured_llm_instance=self._create_structured_llm(),
             file_path=temp_file_path,
             document_id=document_id,
+            user_id=user_id,
         )
 
     @staticmethod
@@ -89,6 +92,7 @@ class FileUploadService:
         uploaded_file: UploadFile,
         file_contents: bytes,
         file_hash: str,
+        user_id: str,
     ) -> StorageUploadResponse:
         original_filename = uploaded_file.filename
         if not original_filename:
@@ -98,6 +102,7 @@ class FileUploadService:
             file_contents=file_contents,
             original_filename=original_filename,
             file_hash=file_hash,
+            user_id=user_id,
         )
 
     async def upload_document(
@@ -114,13 +119,16 @@ class FileUploadService:
         file_hash = calculate_file_hash(file_contents)
         document_id = file_hash
         temp_file_path = self._write_to_temp_file(file_contents)
-        document_indexer = self._create_document_indexer(temp_file_path, document_id)
+        document_indexer = self._create_document_indexer(
+            temp_file_path, document_id, str(current_user.user_id)
+        )
 
         try:
             storage_response = await self._upload_to_storage(
                 uploaded_file=uploaded_file,
                 file_contents=file_contents,
                 file_hash=file_hash,
+                user_id=str(current_user.user_id),
             )
         except (httpx.HTTPError, StorageApiError, SupabaseException) as error:
             Path(temp_file_path).unlink(missing_ok=True)

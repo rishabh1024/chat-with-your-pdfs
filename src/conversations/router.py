@@ -79,6 +79,7 @@ async def send_message_to_agent(
     agent_response = await service.send_user_message(
         conversation_id=conversation.id,
         user_message_content=user_message.message_content,
+        user_id=conversation.user_id,
         ai_model=user_message.ai_model,
     )
     return AIMessageResponse(conversation_id=conversation.id, content=agent_response)

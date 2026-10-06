@@ -42,6 +42,7 @@ async def add_metadata(
     chunks: list[Document],
     structured_llm_instance,
     document_id: str | None = None,
+    user_id: str | None = None,
 ) -> list[Document]:
     if not chunks:
         raise ValueError(
@@ -66,8 +67,12 @@ async def add_metadata(
                     "vector.metadata.generate.empty document_id=%s",
                     document_id,
                 )
+
             if document_id:
                 document_chunk.metadata["document_id"] = document_id
+            if user_id:
+                document_chunk.metadata["user_id"] = user_id
+
         logger.debug(
             "vector.metadata.generate.completed document_id=%s count=%s",
             document_id,

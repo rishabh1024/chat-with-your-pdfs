@@ -4,7 +4,6 @@ from uuid import UUID
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph, RunnableConfig
-from sqlalchemy.sql.functions import mode
 
 from conversations.agent import RAGAgent
 from conversations.schemas import LLMConfiguration
@@ -29,9 +28,12 @@ class ChatService:
         self,
         conversation_id: UUID,
         user_message: str,
+        user_id: str,
         ai_model: LLMConfiguration | None = None,
     ) -> tuple[str, list[str]]:
-        thread_configuration = RunnableConfig({"configurable": {"thread_id": str(conversation_id)}})
+        thread_configuration = RunnableConfig(
+            {"configurable": {"thread_id": str(conversation_id), "user_id": user_id}}
+        )
         agent_context = self.get_agent_context(ai_model)
         agent_response = self.rag_agent.invoke(
             {"messages": [{"role": "user", "content": user_message}]},

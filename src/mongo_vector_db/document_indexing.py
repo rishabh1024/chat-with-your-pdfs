@@ -61,9 +61,11 @@ class DocumentIndexer:
         structured_llm_instance,
         file_path: str,
         document_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         self.file_path = file_path
         self.document_id = document_id
+        self.user_id = user_id
         self.chunked_documents: list[Document] = []
         self.structured_llm_instance = structured_llm_instance
 
@@ -91,6 +93,7 @@ class DocumentIndexer:
                 self.chunked_documents,
                 self.structured_llm_instance,
                 document_id=self.document_id,
+                user_id=self.user_id,
             )
             embeddings_status = create_embeddings(
                 self.chunked_documents,
