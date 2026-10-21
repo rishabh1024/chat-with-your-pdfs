@@ -70,9 +70,30 @@ class DocumentIndexer:
         self.structured_llm_instance = structured_llm_instance
 
     def _prepare_document_for_embedding_creation(self) -> None:
+        logger.info(
+            "vector.document._prepare_document_for_embedding_creation.started document_id=%s file_path=%s",
+            self.document_id,
+            self.file_path,
+        )
         pages = load_pdf(self.file_path, document_id=self.document_id)
+        logger.info(
+            "vector.document.load_pdf.result document_id=%s pages_loaded=%s",
+            self.document_id,
+            len(pages),
+        )
         cleaned_documents = clean_pages(pages, document_id=self.document_id)
+        logger.info(
+            "vector.document.clean_pages.result document_id=%s cleaned_count=%s",
+            self.document_id,
+            len(cleaned_documents),
+        )
         self.chunked_documents = split_pages(cleaned_documents, document_id=self.document_id)
+        logger.info(
+            "vector.document._prepare_document_for_embedding_creation.completed "
+            "document_id=%s chunks_created=%s",
+            self.document_id,
+            len(self.chunked_documents),
+        )
 
     @retry(
         reraise=True,

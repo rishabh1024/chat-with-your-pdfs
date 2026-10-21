@@ -29,20 +29,40 @@ def load_pdf(
     try:
         loader = PyMuPDFLoader(file_path, mode=page_mode)
         documents = loader.load()
-        logger.debug(
-            "vector.document.load.completed document_id=%s count=%s",
+
+        # Log details about extracted content
+        total_chars = sum(len(doc.page_content) for doc in documents)
+        non_empty_pages = sum(1 for doc in documents if doc.page_content.strip())
+        logger.info(
+            "vector.document.load.completed document_id=%s pages=%s non_empty_pages=%s total_chars=%s",
             document_id,
             len(documents),
+            non_empty_pages,
+            total_chars,
         )
+
+        if total_chars == 0:
+            logger.warning(
+                "vector.document.load.no_text document_id=%s - PDF has %s pages but no extractable text (may be scanned/image-only)",
+                document_id,
+                len(documents),
+            )
+
         return documents
     except ValueError:
         loader = PyMuPDFLoader(file_path, mode="page")
         documents = loader.load()
-        logger.debug(
-            "vector.document.load.completed document_id=%s count=%s",
+
+        total_chars = sum(len(doc.page_content) for doc in documents)
+        non_empty_pages = sum(1 for doc in documents if doc.page_content.strip())
+        logger.info(
+            "vector.document.load.completed document_id=%s pages=%s non_empty_pages=%s total_chars=%s mode=fallback",
             document_id,
             len(documents),
+            non_empty_pages,
+            total_chars,
         )
+
         return documents
     except pymupdf.EmptyFileError as empty_file_error:
         raise pymupdf.EmptyFileError(
