@@ -339,9 +339,11 @@ async def run_document_indexing_task(
 
     except Exception as error:
         logger.error(
-            "upload.indexing.failed document_id=%s error_type=%s",
+            "upload.indexing.failed document_id=%s error_type=%s error details=%s",
             document_id,
             type(error).__name__,
+            str(error),
+            exc_info=True
         )
 
         set_document_index_status(

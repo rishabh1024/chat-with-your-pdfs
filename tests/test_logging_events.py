@@ -111,6 +111,7 @@ def test_storage_outage_logs_no_external_exception_text(
             file_contents=b"pdf",
             original_filename="private-filename.pdf",
             file_hash=document_id,
+            user_id="user-123",
         )
     )
 

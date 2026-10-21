@@ -1,7 +1,7 @@
 [project]
-name = "mongo-vector-backend"
-version = "0.1.0"
-description = "Backend interfaces to manage and query embeddings in MongoDB Atlas Vector Search."
+name = "chat-with-pdfs-fastapi-backend"
+version = "1.0.0"
+description = "fastapi backend for a langgraph agent facilitated chat application"
 readme = "README.md"
 authors = [
     { name = "rishabh1024", email = "rishabhagg2008@gmail.com" }
